@@ -1,0 +1,11 @@
+# Target allowlist. Default deny. P0 ships with NO hosts, so every request is refused.
+#
+# Adding an entry is a reviewed change (see .github/CODEOWNERS), never automatic. The Cloudflare quick tunnel
+# hostname rotates (ADR-007), so each new URL is a deliberate edit. Wildcards are not supported.
+#
+# Entry shape:
+#   - scheme: https
+#     host: example-host.trycloudflare.com
+#     port: 443
+#     path_prefix: /
+entries: []

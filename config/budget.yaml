@@ -1,0 +1,9 @@
+# Cost caps in USD. Values are conservative placeholders, not approved spend.
+# A cap above its hard ceiling is rejected at load time. Live use also needs an approval token bound to these exact
+# numbers (src/agentforge/safety/budget.py) and a provider-side spend-limit attestation (config/spend_limits.yaml).
+# A target chat costs about 0.05 USD on the target's key, so attack traffic is not free even without an attacker model.
+per_run_usd: 1.00
+per_day_usd: 3.00
+max_attacks_per_run: 20
+hard_ceiling_per_run_usd: 5.00
+hard_ceiling_per_day_usd: 15.00

@@ -1,0 +1,11 @@
+# Record that a provider-side spending limit was set on each API key (DECISIONS Q13).
+# The platform cannot verify this. It only refuses live use when a recent record is missing.
+# P0 ships empty on purpose, so live use is refused. Never put a key value here, only a label.
+#
+# Entry shape:
+#   - provider: openrouter
+#     key_label: platform-redteam-key
+#     limit_usd: 10
+#     attested_by: your-name
+#     attested_on: 2026-10-17
+attestations: []

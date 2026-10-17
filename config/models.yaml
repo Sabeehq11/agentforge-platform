@@ -1,0 +1,19 @@
+# Model per agent role (ADR-004). Placeholders only: no model is chosen or probed in P0, and no key lives here.
+# red_team and judge must have different `family` values; src/agentforge/models_config.py enforces it.
+roles:
+  red_team:
+    provider: TBD
+    model: TBD
+    family: tbd-attacker
+  judge:
+    provider: TBD
+    model: TBD
+    family: tbd-judge
+  orchestrator:
+    provider: TBD
+    model: TBD
+    family: tbd-orchestrator
+  documentation:
+    provider: TBD
+    model: TBD
+    family: tbd-documentation
