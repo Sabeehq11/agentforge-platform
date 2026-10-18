@@ -31,7 +31,7 @@ and is not a P1 miss.
 | G-1 | P0, every later checkpoint | No deployed URL is recorded or submitted. PRD hard gate. | Flagged. Needs the operator to supply the current URL and a decision on Q2. Not invented here |
 | G-2 | P0 | Build-versus-configure tool claims are marked unverified. The PRD asks what each tool covers and where it falls short | Flagged. Checking the claims means reading each vendor's docs, which is a separate approved step, not a small edit |
 | G-3 | P0 | Evidence packet message schemas are names, not JSON Schemas | Not a gap. Resolved at P2: the schemas are in `contracts/v1/`. Kept so the P0 finding stays visible |
-| G-4 | P0 | Off-list refusals are raised, not logged. ROADMAP 2.2 says refused and logged | Not a P0 miss. Logging is part of the envelope that must exist before the first live run, so it is P3. No logging code added |
+| G-4 | P0 | Off-list refusals are raised, not logged. ROADMAP 2.2 says refused and logged | Resolved at P3. `src/agentforge/safety/refusal_log.py` logs gate, host and a fixed reason. `test_off_list_url_is_logged_and_refused` and `test_off_list_redirect_is_logged_and_not_followed`. Row kept |
 | G-5 | P0 | CODEOWNERS has no effect until branch protection requires it. That setting is not confirmed | Flagged. A repository setting, not a code change |
 | G-6 | P1 | None found against the P1 requirements | No P1 code or doc fix was needed. Closure audit 2026-10-17 agrees |
 
@@ -100,14 +100,54 @@ now points at `contracts/v1/` instead of names only. The row is kept, not delete
 
 **All 69 requirement rows still have a checkpoint owner.** None was moved.
 
+## P3 closure audit (2026-10-17)
+
+Re-read the original Week 3 PRD (`Week_3_AgentForge_Updated.docx.pdf`, Stage 3 and the eval-design paragraph),
+[ROADMAP.md](ROADMAP.md) section 4 P3, and this matrix. No requirement was added. No owner was changed. No P4–P11
+row was implemented or marked met.
+
+**What P3 met, with evidence in [PROGRESS.md](PROGRESS.md).** E-8, E-9, E-12, and the per-case half of E-11. Six
+synthetic cases in `evals/cases/` cover TM-PI, TM-EX and TM-DS. Each has an OWASP id and one of `boundary`,
+`invariant` or `regression_risk`. Dry-run writes `not_run` unless the local attack-count grader actually ran.
+Replay of one transcript is stable. A weakened local stub fails the canary. An env flag cannot call the transport
+while `LIVE_ENABLED` is false.
+
+**H-3 is not met.** The suite exists. There is no stored graded `pass` or `fail` from a target run in three
+categories. `not_run` does not count. The approved live run was not started: no URL, empty allowlist, empty spend
+attestation.
+
+**The PRD Stage 3 live-agent sentence is partial until P4.** The hard gate asks for `evals/` results from at least
+three categories and one agent role live against the deployed target. The suite half is P3 and is not yet met (H-3).
+The agent half stays owned by P4 (H-4). P3 does not implement Red Team, Judge, Orchestrator or Documentation, and
+does not mark H-4 met. Status of that sentence is `partial`, not a moved row.
+
+**Still open, and not closed here.** G-1 (no deployed URL). G-2. G-5. E-6 (spend attestation empty). S-1 (running
+stack not confirmed equal to the pin). E-1 stays partial: the chokepoint, refusal log and rate cap exist, and
+`config/allowlist.yaml` is still empty. E-3 is partial: the identity check exists and is tested against a stub
+body; the read-only login-page GET was not made. G-4 is resolved by the refusal-log tests and is not deleted.
+
+**Operator steps not run.** Allowlist edit, spend attestation, login-page GET, fixture-user confirmation, approved
+live run, off-list host against a real transport. GitHub Actions has not run on these files.
+
+**Local path added 2026-10-18. Not a closure.** `src/agentforge/evals/session.py` and the widened chokepoint can carry
+headers and a body, and fake tests cover identity GET, login, CSRF, SSE parse, and TM-EX-3 grading. That is local
+evidence only. It does not meet H-3: no graded target result was stored. H-4 stays unmet and owned by P4. G-1 stays
+open: no deployed URL was written into the repo. E-3 stays partial: the login-page GET was not made against the
+running target. E-6 stays a gap: `config/spend_limits.yaml` is still empty. S-1 stays partial until the running stack
+is confirmed equal to `9f03654`. The pinned source shows no authorized public step that sets patient context, so
+TM-EX-2 and TM-PI-2 stay `not_run` rather than a guessed patient-open or upload. No row below was marked met by this
+pass.
+
+**All 69 requirement rows still have a checkpoint owner.** None was moved.
+
 ## Hard gates
 
 | Id | PRD requirement | Checkpoint | Status | Evidence |
 |---|---|---|---|---|
 | H-1 | Deployed target URL submitted with every checkpoint | P0, then every checkpoint | gap | No URL in [TARGET_FREEZE.md](TARGET_FREEZE.md). Q2 open. G-1 |
 | H-2 | `THREAT_MODEL.md` with a ~500-word summary first, six categories, four attributes each | P1 | met | [THREAT_MODEL.md](../THREAT_MODEL.md). Summary 543 words. `scripts/check_threat_model.py`: 0 problems. Closure audit 2026-10-17 |
-| H-3 | `evals/` with results from at least three attack categories | P3 | not started | No `evals/` directory |
-| H-4 | One agent role running live against the deployed target | P4 | not started | No agent code. `LIVE_ENABLED` is false |
+| H-3 | `evals/` with results from at least three attack categories | P3 | not started | Suite exists: `evals/cases/`, six cases, TM-PI, TM-EX, TM-DS. No graded target result. Dry-run is `not_run` except the local cap stop. A file of `not_run` does not meet this row. The 2026-10-18 session client is local fake evidence only and does not close this row |
+| H-4 | One agent role running live against the deployed target | P4 | not started | No agent implemented. Stage 3 live-agent sentence is partial until P4 and is not moved here. `LIVE_ENABLED` is false |
 | H-5 | `ARCHITECTURE.md` with a ~500-word summary, each agent named, a diagram | P5 | not started | Draft diagram only, in [DEFENSE_PACKET.md](DEFENSE_PACKET.md) |
 
 ## Stage deliverables
@@ -173,18 +213,18 @@ now points at `contracts/v1/` instead of names only. The row is kept, not delete
 
 | Id | PRD requirement | Checkpoint | Status | Evidence |
 |---|---|---|---|---|
-| E-1 | Target allowlist, default deny, one HTTP chokepoint, off-list redirect refused | P0 skeleton, complete before P3 | partial | `src/agentforge/safety/allowlist.py`, `chokepoint.py`, tests. Empty allowlist. No live transport. Redirect logging is G-4 |
+| E-1 | Target allowlist, default deny, one HTTP chokepoint, off-list redirect refused | P0 skeleton, complete before P3 | partial | Chokepoint, refusal log and rate cap exist. `config/allowlist.yaml` is still empty. No live transport. G-4 resolved by `tests/test_p3_envelope.py`; row kept |
 | E-2 | Adding an allowlist entry is a reviewed change, never automatic | P0 | partial | `.github/CODEOWNERS` lists `config/`. Review is not enforced until branch protection is on. G-5 |
-| E-3 | Target identity check before each run | P3 | not started | |
+| E-3 | Target identity check before each run | P3 | partial | `src/agentforge/safety/identity.py` checks a stub login body for `OpenEMR` and rejects a redirect. The session client can issue that GET through the chokepoint, but only a fake transport has been used. The read-only GET of the public login page was not made. Reachability stays UNVERIFIED |
 | E-4 | Per-run and per-day USD caps, attack-count cap, approval token bound to the exact caps | P0 | partial | `src/agentforge/safety/budget.py` and tests. No run is approved |
 | E-5 | Kill switch halts before the next call | P0 | met | `budget.py`. Tested, and confirmed by a user-run smoke test recorded in [PROGRESS.md](PROGRESS.md) |
 | E-6 | Provider-side spending limit on every key | Before the first live run | gap | The gate refuses while `config/spend_limits.yaml` is empty. The limits are not set. Q13. Cannot be verified from the repo |
 | E-7 | Spend metered per agent, including target-side spend | P4 | not started | |
-| E-8 | Request-rate cap toward the target | P3 | not started | |
-| E-9 | Synthetic data only. Transcripts that quote the target are scanned before storage | P3 | not started | A-001 is unverified for the running deployment |
+| E-8 | Request-rate cap toward the target | P3 | met | `src/agentforge/safety/rate.py`. `test_rate_cap_stops_before_the_next_call`. A 429 is returned and not retried |
+| E-9 | Synthetic data only. Transcripts that quote the target are scanned before storage | P3 | met | `src/agentforge/safety/phi.py`. `evals/fixtures/synthetic-intake.txt`. `test_phi_blocks_store`. A-001 is still unverified for the running deployment; that does not reopen this row |
 | E-10 | CI makes no live or paid call. Secrets never reach a forked PR | P0 | met | `.github/workflows/ci.yml` has no secrets. `scripts/check_workflows.py` forbids `pull_request_target` and secret references |
-| E-11 | OWASP Web Top 10 and LLM Top 10 mapped, non-applicable items explained, SSRF checked against the code | P1 mapping, P3 per case | partial | P1 half met: [THREAT_MODEL.md](../THREAT_MODEL.md), D-013. Names checked against the official 2021 Web and 2023 v1.1 LLM pages on 2026-10-17. No attacker-controlled outbound URL construction was identified at the pin. That is not proof SSRF is impossible. Per-case mapping is P3 |
-| E-12 | Every case exercises a boundary, an invariant or a regression risk. Static payload lists do not count | P3 | not started | |
+| E-11 | OWASP Web Top 10 and LLM Top 10 mapped, non-applicable items explained, SSRF checked against the code | P1 mapping, P3 per case | met | P1 half unchanged. P3 half: each of the six cases names an OWASP id already in [THREAT_MODEL.md](../THREAT_MODEL.md) (`LLM01`, `A01`, `A07`, `LLM04`). The suite does not claim every OWASP row has a case. SSRF remains a code reading, not a proof |
+| E-12 | Every case exercises a boundary, an invariant or a regression risk. Static payload lists do not count | P3 | met | `evals/schema/case.schema.json` requires `exercise`. The six cases use `invariant`, `boundary` and `regression_risk`. `scripts/check_evals.py` exits 0 |
 | E-13 | Auth model: which agent calls which target with which credential. Role-scoped database access | P9 | not started | |
 | E-14 | Harmful generated content: storage and redaction rules | P9 | not started | |
 | E-15 | Audit trail sufficient to reconstruct an overnight run | P9 | not started | |

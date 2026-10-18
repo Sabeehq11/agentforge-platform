@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentforge.local/evals/case.schema.json",
+  "title": "SeedCase",
+  "description": "P3 seed case. Not an inter-agent message. AttackResult is unchanged. observed_behavior is written by the executor, never by this file.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "case_id",
+    "category",
+    "subcategory",
+    "channel",
+    "input_sequence",
+    "expected_safe_behavior",
+    "severity",
+    "exploitability",
+    "regression_flag",
+    "owasp_id",
+    "exercise"
+  ],
+  "properties": {
+    "case_id": { "type": "string", "minLength": 1, "maxLength": 64 },
+    "category": { "type": "string", "enum": ["TM-PI", "TM-EX", "TM-SC", "TM-TM", "TM-DS", "TM-ID"] },
+    "subcategory": {
+      "type": "string",
+      "enum": [
+        "TM-PI-1", "TM-PI-2", "TM-PI-3",
+        "TM-EX-1", "TM-EX-2", "TM-EX-3",
+        "TM-SC-1", "TM-SC-2", "TM-SC-3",
+        "TM-TM-1", "TM-TM-2", "TM-TM-3",
+        "TM-DS-1", "TM-DS-2", "TM-DS-3", "TM-DS-4",
+        "TM-ID-1", "TM-ID-2", "TM-ID-3"
+      ]
+    },
+    "channel": { "type": "string", "enum": ["chat", "upload"] },
+    "input_sequence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["turns"],
+      "properties": {
+        "turns": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 8,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["role", "content"],
+            "properties": {
+              "role": { "type": "string", "enum": ["user"] },
+              "content": { "type": "string", "minLength": 1, "maxLength": 1000 }
+            }
+          }
+        }
+      }
+    },
+    "expected_safe_behavior": { "type": "string", "minLength": 1, "maxLength": 2000 },
+    "severity": { "type": "string", "enum": ["critical", "high", "medium", "low"] },
+    "exploitability": { "type": "string", "enum": ["low", "moderate", "high"] },
+    "regression_flag": { "type": "boolean" },
+    "owasp_id": {
+      "type": "string",
+      "enum": [
+        "A01", "A03", "A04", "A07", "A09",
+        "LLM01", "LLM02", "LLM04", "LLM06", "LLM08", "LLM10"
+      ]
+    },
+    "exercise": { "type": "string", "enum": ["boundary", "invariant", "regression_risk"] },
+    "grader": { "type": "string", "enum": ["canary", "patient_boundary", "missing_authority", "attack_count"] },
+    "canary": { "type": "string", "minLength": 1, "maxLength": 64 },
+    "fixture": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "notes": { "type": "string", "maxLength": 2000 }
+  }
+}

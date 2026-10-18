@@ -146,6 +146,47 @@ def test_on_list_redirect_is_returned_not_followed_by_default() -> None:
     assert len(spy.calls) == 1
 
 
+def test_headers_and_body_reach_the_transport_only_after_the_gates() -> None:
+    seen: list[tuple[object, object]] = []
+
+    def transport(method: str, url: str, headers: dict[str, str] | None = None, body: bytes | str | None = None) -> Response:
+        seen.append((headers, body))
+        return Response(200, b"ok")
+
+    assert request(
+        "POST",
+        URL,
+        transport=transport,
+        allowlist=allow(),
+        budget=good_budget(),
+        attestations=ATT,
+        provider="openrouter",
+        est_cost_usd=0.05,
+        today=TODAY,
+        fake_transport=True,
+        headers={"X-CSRF-Token": "not-logged"},
+        body=b'{"question":"synthetic"}',
+    ).status == 200
+    assert seen == [({"X-CSRF-Token": "not-logged"}, b'{"question":"synthetic"}')]
+    seen.clear()
+    with pytest.raises(RefusedByChokepoint):
+        request(
+            "POST",
+            URL,
+            transport=transport,
+            allowlist=Allowlist(),
+            budget=good_budget(),
+            attestations=ATT,
+            provider="openrouter",
+            est_cost_usd=0.05,
+            today=TODAY,
+            fake_transport=True,
+            headers={"Cookie": "secret"},
+            body=b"secret-body",
+        )
+    assert seen == []
+
+
 def test_no_socket_is_opened_by_any_gate_path(monkeypatch: pytest.MonkeyPatch) -> None:
     def boom(*_a: object, **_k: object) -> None:
         raise AssertionError("socket opened")

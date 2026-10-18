@@ -2,8 +2,9 @@
 
 Adversarial AI security platform for the AgentForge Clinical Co-Pilot (Gauntlet AI, Week 3).
 
-**Status: P2 (contracts and data model). Nothing attacks anything yet.** This repository makes no request to the
-target, calls no model and spends no money. Everything not listed under "Runnable today" is **(planned)** and must
+**Status: P3 in progress (seed suite and deterministic executor). Nothing has attacked the target.** This
+repository makes no request to the target, calls no model and spends no money. `LIVE_ENABLED` is false. An
+environment variable cannot turn it on. Everything not listed under "Runnable today" is **(planned)** and must
 not be described as working.
 
 ## What this repo is
@@ -39,9 +40,20 @@ only over HTTP. See [TARGET_FREEZE.md](Docs/TARGET_FREEZE.md).
   reject a duplicate attack sequence, a missing required field and a published status. Who may write is a design
   record, [ACCESS_CONTROL.md](Docs/ACCESS_CONTROL.md), not an enforced role.
 
+## Runnable today (P3)
+
+- A seed suite of six synthetic cases in `evals/cases/` across TM-PI, TM-EX and TM-DS. Dry-run is the default and
+  does not open a socket. A case that needs a target is `not_run`, not `pass`.
+- Deterministic graders for a canary, a patient-id boundary, a missing session and the attack-count cap
+  (`src/agentforge/evals/`). Replay grades a recorded transcript. It does not call the target.
+- Refusal log, login-page identity check, request-rate cap and a PHI scan before a result is written
+  (`src/agentforge/safety/`). The allowlist file is still empty, so a live call is refused.
+- No graded result against the deployed target exists. That run is manual and has not been started.
+
 ## Planned (not built)
 
-Attack suite, Judge, Red Team, Orchestrator, Documentation agent, regression harness, observability, load tests.
+Judge, Red Team, Orchestrator, Documentation agent, regression harness, observability, load tests. One agent role
+live against the target is P4, not this checkpoint.
 Plan: [ROADMAP.md](Docs/ROADMAP.md). Progress and evidence: [PROGRESS.md](Docs/PROGRESS.md).
 Decisions and open questions: [DECISIONS.md](Docs/DECISIONS.md).
 
@@ -49,7 +61,7 @@ Decisions and open questions: [DECISIONS.md](Docs/DECISIONS.md).
 
 - Pinned commit and caveats: [TARGET_FREEZE.md](Docs/TARGET_FREEZE.md).
 - Deployed URL: provisional and unconfirmed. The Cloudflare quick tunnel URL rotates (Q2). Reachability is
-  UNVERIFIED in P0.
+  UNVERIFIED. P3 did not request the login page.
 
 ## Develop
 
@@ -76,6 +88,7 @@ python scripts/check_workflows.py
 python scripts/check_adrs.py
 python scripts/check_threat_model.py
 python scripts/check_schema_diff.py
+python scripts/check_evals.py
 ```
 
 ## Safety rules

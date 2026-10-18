@@ -12,7 +12,7 @@ Status values: `not started`, `in progress`, `blocked`, `done`.
 
 | Milestone | Due (PRD) | Checkpoints | Status |
 |---|---|---|---|
-| Architecture Defense | 4 hours after kickoff | P0, drafts of P1 and P2 | P0 done (reachability deferred to P3), P1 done, P2 done |
+| Architecture Defense | 4 hours after kickoff | P0, drafts of P1 and P2 | P0 done (reachability still unverified), P1 done, P2 done |
 | MVP | Tuesday 11:59 PM | P0 to P5 | not started |
 | Final | Friday noon | P6 to P11 | not started |
 
@@ -22,13 +22,13 @@ The kickoff time is not recorded in the repo, so the Architecture Defense deadli
 
 | Control | Status | Evidence |
 |---|---|---|
-| Target allowlist, default deny, one HTTP chokepoint | in progress | Skeleton and tests in P0. No live transport, no hosts listed |
-| Target identity check | not started | |
-| Synthetic-data fixtures and transcript scan | not started | |
+| Target allowlist, default deny, one HTTP chokepoint | in progress | Chokepoint, refusal log and header/body transport exist. `config/allowlist.yaml` is still empty. No live transport |
+| Target identity check | in progress | Fingerprint check and fake login-page GET exist. The read-only GET of the running login page was not made. E-3 stays partial |
+| Synthetic-data fixtures and transcript scan | in progress | Synthetic fixtures and the PHI scan exist and are tested. No live transcript has been stored |
 | Per-run and per-day USD caps, attack-count cap, approval token | in progress | `budget.py` and tests in P0. Not approved for any run |
 | Provider-side spending limit on every key (DECISIONS Q13) | in progress | Attestation gate in P0 refuses while `spend_limits.yaml` is empty. Limits not set |
 | Per-agent cost metering and kill switch | in progress | Kill switch in `budget.py`. Per-agent metering is P4 |
-| Request-rate cap toward the target | not started | |
+| Request-rate cap toward the target | in progress | `rate.py` and tests. A 429 is not retried. Not exercised against the running target |
 | Human approval for over-cap runs, new allowlist entries, load tests | not started | |
 
 ## PRD traceability
@@ -48,7 +48,7 @@ are unverified (G-2).
 | `USERS.md` | MVP **(unconfirmed)** | done for P1 | Written at repo root. Checkpoint unconfirmed (Q5) |
 | `ARCHITECTURE.md` | MVP | not started | P5 |
 | `/contracts` | MVP first version | done for P2 | v1 schemas in `contracts/v1/`. Full coverage of both sides is Final |
-| `evals/` with 3+ categories of results | MVP | not started | P3 |
+| `evals/` with 3+ categories of results | MVP | not started | P3 suite exists locally. No graded target result, so H-3 stays unmet |
 | One agent live against the target | MVP | not started | P4 |
 | Vulnerability reports (3 minimum) | Final, MVP unconfirmed (Q5) | not started | P7 |
 | AI cost analysis | Final, actual spend at MVP | not started | P10 |
@@ -185,17 +185,31 @@ are unverified (G-2).
   - Closure audit, 2026-10-17, against the original Week 3 PRD (pages 11–12), [ROADMAP.md](ROADMAP.md) section 4 P2 and [PRD_TRACEABILITY.md](PRD_TRACEABILITY.md). C-1 to C-5, D-6 and D-9 met. D-1's P2 model is complete; the row stays partial until P7. D-7 and D-8 stay partial. No later-checkpoint row was implemented or marked met. G-1 to G-6 remain. G-3 is resolved by `contracts/v1/` and is not deleted. Nothing committed or pushed.
 
 ### P3. Seed attack suite and deterministic executor
-- Status: not started. Depends on: P2, safety envelope.
-- [ ] Case format with OWASP ID and boundary, invariant or regression tag
-- [ ] Executor through the allowlist chokepoint
-- [ ] Deterministic checks (canaries, PHI, patient-ID, tool allowlist)
-- [ ] 3+ categories, synthetic fixtures
-- [ ] Verify: dry run passes in CI
+- Status: in progress. Depends on: P2, safety envelope. Not done: the approved live run has not been started, so H-3 has no graded target result. The Stage 3 live-agent sentence is partial until P4. H-4 is not moved.
+- [x] Case format with OWASP ID and boundary, invariant or regression tag
+- [x] Executor through the allowlist chokepoint
+- [x] Deterministic checks (canaries, PHI, patient-ID, tool allowlist)
+- [x] 3+ categories, synthetic fixtures
+- [x] Verify: dry run passes in CI
 - [ ] Verify: one approved live run stored under `evals/`
-- [ ] Verify: replay gives same verdict
-- [ ] Verify: weakened target fails the checks
-- [ ] CI: suite validation, synthetic-data scan, allowlist tests
-- Evidence:
+- [x] Verify: replay gives same verdict
+- [x] Verify: weakened target fails the checks
+- [x] CI: suite validation, synthetic-data scan, allowlist tests
+- Local integration path, 2026-10-18, fake transport only. Not a live run and not evidence for H-3. `src/agentforge/evals/session.py` can GET the login page, POST a synthetic fixture login, read `data-csrf` and `data-endpoint`, and POST chat JSON with `X-CSRF-Token`. The pinned SHA `9f036541cf95e896db065e0c652afb75627b03c2` shows no authorized public-module step that sets the open patient, so no set-pid URL was added. Without a caller-supplied verified workflow, chat cases stay `not_run`. TM-EX-2 and TM-PI-2 stay `not_run`. TM-DS-3 stays a local cap stop and does not contact the target. A fake `401` grades `pass` for TM-EX-3; a fake `200` body grades `fail`; a fake `409` is `error`. `LIVE_ENABLED` remains false. `real_transport` raises before any socket and does not open one. No hostname was written into `config/allowlist.yaml`.
+- Evidence, 2026-10-17, Python 3.12.15 at `/private/tmp/p2pin/bin/python`. No request to the target, no model call, no spend. `LIVE_ENABLED` remains false. `config/allowlist.yaml` remains empty. `config/spend_limits.yaml` remains empty:
+  - Suite: six cases in `evals/cases/`, categories TM-PI, TM-EX, TM-DS. `scripts/check_evals.py` printed `OK 6 cases` and exited 0. A dry-run with no budget writes `not_run` for every case. With an approved budget, only `seed-tm-ds-3` is `pass` (the local attack-count stop). No target case is `pass`.
+  - Replay: the same recorded transcript graded `pass` twice. A transcript that obeys `CANARY-AF-PI1` graded `fail`. An inconclusive patient-boundary transcript graded `error`, not `pass`.
+  - Weakened stub: a local response that echoes the canary graded `fail`. No request to the pinned target.
+  - Kill switch: `AGENTFORGE_LIVE=1` still left the transport uncalled and the case `not_run`.
+  - Envelope tests in `tests/test_p3_envelope.py`: off-list URL and off-list redirect logged and refused; rate cap stopped before the next call; identity check rejected a body without `OpenEMR` and rejected a redirect; a PHI pattern refused the results write.
+  - Local CI command set passed: ruff, mypy, pytest (coverage above the 85% floor), Bandit, secret scan, link check, ADR check, threat-model check, workflow guard, schema diff, `scripts/check_evals.py`. GitHub Actions has not run on these files: **UNVERIFIED** until the user pushes.
+  - Not run, and not marked done: operator steps 1–5 and 8 of the P3 plan. No URL was supplied. No live login-page GET. No approved live suite run. Reachability stays UNVERIFIED. G-1 and E-6 stay open.
+  - Closure audit, 2026-10-17, against the original Week 3 PRD Stage 3, [ROADMAP.md](ROADMAP.md) section 4 P3 and [PRD_TRACEABILITY.md](PRD_TRACEABILITY.md). E-8, E-9, E-12 and the case-mapping half of E-11 are met by the suite and tests. H-3 is not met: there is no graded `pass` or `fail` from a target run in three categories. The Stage 3 live-agent sentence is recorded as partial until P4. H-4 stays owned by P4 and is not marked met. No requirement row was added or moved.
+- Evidence, 2026-10-18, Python 3.12.15 at `/private/tmp/p2pin/bin/python`. Local implementation and local CI only. No request to the target, no model call, no spend. `LIVE_ENABLED` remains false. `config/allowlist.yaml` remains `entries: []`. `config/spend_limits.yaml` remains `attestations: []`. No hostname was written into the repo.
+  - Completed locally: the seed suite, deterministic executor, refusal log, rate cap, PHI scan, and the public-module session path in `src/agentforge/evals/session.py`. Fake tests cover identity mismatch (no later call), chat withheld without confirmed patient context, CSRF and question on a confirmed-context POST, cookie absent from the refusal log, TM-PI-3 conversation ids, and TM-EX-3 grading (`401` pass, `200` body fail, `409` error). TM-EX-2 and TM-PI-2 stay `not_run`. TM-DS-3 stays a local cap stop.
+  - Local CI, same command set as `.github/workflows/ci.yml`, all exit 0: ruff, mypy (25 source files), pytest **187 passed, 91.54% coverage** (floor 85%), Bandit, secret scan (0 hits), link check (78 links, 0 problems), ADR check (7, 0 problems), threat-model check (0 problems), contract tests (54 passed), schema diff (11 schemas, 0 breaking), workflow guard, `scripts/check_evals.py` (`OK 6 cases`), and the synthetic-data and allowlist pytest step (72 passed). Ruff was rerun with `--no-cache` because the read-only sandbox could not write `.ruff_cache`; that rerun passed.
+  - GitHub Actions has not run on these files: **UNVERIFIED** until the user pushes.
+  - Still open, and not closed by this evidence: the approved live run under `evals/` (checkbox above stays unchecked). H-3 stays unmet. H-4 and the Stage 3 live-agent sentence stay partial until P4. G-1, E-6, and the live half of E-3 stay open. S-1 stays partial until the running stack is confirmed equal to `9f03654`. E-1 stays partial because the allowlist is empty. No row in [PRD_TRACEABILITY.md](PRD_TRACEABILITY.md) was marked met by this pass. Nothing committed or pushed.
 
 ### P4. Judge prototype, Red Team seed
 - Status: not started. Depends on: P3, P0 model ADR.
@@ -308,3 +322,6 @@ Record every paid call. The PRD asks for actual development spend.
 | 2026-10-17 | OWASP names in THREAT_MODEL.md checked against the official 2021 Web and 2023 v1.1 LLM pages. Both match; one hyphenation corrected (A10); UNVERIFIED labels removed and the source links recorded. Two CareTeam authorization weaknesses from the P1 code review recorded as P3 candidates. No model or target call. Nothing committed or pushed. |
 | 2026-10-17 | P1 closure audit against the original 17-page PRD, the roadmap and `Docs/PRD_TRACEABILITY.md`. P1-owned requirements met. Three manual checks recorded. All 69 requirement rows have a checkpoint owner. G-1 and G-2 remain unresolved, with S-1, G-5 and E-6. P1 judged ready to commit. No model or target call. |
 | 2026-10-17 | P2 closure audit recorded. C-1 to C-5, D-6 and D-9 met. D-1, D-7 and D-8 stay partial. Six manual checks recorded: 16 nested tests passed, schema diff exit 1, migration preserved its row, typed insert errors, no network client in the new packages, 145 tests at 95.79% coverage. G-1 to G-6 unchanged. G-3 resolved, not deleted. Nothing committed or pushed. |
+| 2026-10-17 | P3 seed suite and deterministic executor implemented. Six synthetic cases, dry-run default, refusal log, identity check, rate cap and PHI scan. `LIVE_ENABLED` stays false and is not bypassable by an env flag. No target request, no model call, no spend. Live run not started. Nothing committed or pushed. |
+| 2026-10-18 | P3 public-module session path added and tested with fakes only. Identity mismatch makes no later call. Chat is not sent unless patient context is confirmed by an injected verified workflow; the pinned source shows none, so those cases stay `not_run`. TM-EX-2, TM-PI-2 stay `not_run`. TM-DS-3 stays local. H-3, H-4, G-1, E-3 live half and E-6 stay open. No target request, no model call, no spend. Nothing committed or pushed. |
+| 2026-10-18 | P3 local CI recorded: 187 tests passed, 91.54% coverage, and every workflow check exited 0. Local implementation is recorded. Live execution, H-3, H-4, G-1, E-3 live half, E-6 and S-1 stay open. No PRD traceability status was changed. No target request, no model call, no spend. Nothing committed or pushed. |

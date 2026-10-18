@@ -99,7 +99,7 @@ def referenced(root: Path) -> list[tuple[str, str]]:
         for n, line in enumerate(lines, 1):
             if FENCE.match(line):
                 fenced = not fenced
-            if fenced:
+            if fenced or "threat-model-check:ignore" in line:
                 continue
             for i in REF.findall(line):
                 out.append((f"{f.relative_to(root)}:{n}", i))

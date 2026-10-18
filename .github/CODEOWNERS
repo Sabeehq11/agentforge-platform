@@ -2,5 +2,6 @@
 # Changing the target allowlist, caps, spend-limit attestations, models, the safety code or CI needs the owner.
 /config/                     @Sabeehq11
 /src/agentforge/safety/      @Sabeehq11
+/evals/                      @Sabeehq11
 /.github/                    @Sabeehq11
 /scripts/                    @Sabeehq11

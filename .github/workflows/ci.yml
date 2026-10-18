@@ -77,3 +77,9 @@ jobs:
 
     - name: Workflow guard (no pull_request_target, least privilege, no secrets)
       run: python scripts/check_workflows.py
+
+    - name: Suite schema validation (no live calls)
+      run: python scripts/check_evals.py
+
+    - name: Synthetic-data scan and allowlist tests (no live calls)
+      run: python -m pytest tests/test_evals.py tests/test_p3_envelope.py tests/test_allowlist.py -q
