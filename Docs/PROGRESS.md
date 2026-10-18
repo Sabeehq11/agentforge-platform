@@ -12,7 +12,7 @@ Status values: `not started`, `in progress`, `blocked`, `done`.
 
 | Milestone | Due (PRD) | Checkpoints | Status |
 |---|---|---|---|
-| Architecture Defense | 4 hours after kickoff | P0, drafts of P1 and P2 | P0 in progress |
+| Architecture Defense | 4 hours after kickoff | P0, drafts of P1 and P2 | P0 done (reachability deferred to P3), P1 not started |
 | MVP | Tuesday 11:59 PM | P0 to P5 | not started |
 | Final | Friday noon | P6 to P11 | not started |
 
@@ -56,9 +56,17 @@ The kickoff time is not recorded in the repo, so the Architecture Defense deadli
 ## Checkpoints
 
 ### P0. Foundations and decisions
-- Status: **in progress**. Implemented and locally checked on Python 3.12.15 (and earlier on 3.10.13). Two verification
-  lines are UNVERIFIED (GitHub Actions, target reachability), so P0 is not `done` under the update rule above.
-  Depends on: nothing. Nothing is committed or pushed.
+- Status: **done**, with one recorded exception. Depends on: nothing.
+  - Commit: `4bbd1b6` (`feat: establish AgentForge P0 foundation`, full SHA
+    `4bbd1b6d400a533e22891a2aa0a71b3b4bac4ab6`), pushed to `origin/main` on 2026-10-17. `git ls-remote origin main`
+    returned that SHA. It is the first commit in the repo and was not force pushed.
+  - GitHub Actions CI #1: **passed**, as reported by the user. The assistant did not confirm this: `gh` is not installed
+    here and the private repo returns 404 to unauthenticated API calls, so there is no run log in this repo.
+  - Tests: 74 automated tests (96.26% coverage on Python 3.12.15) and four manual smoke tests, all passing. The smoke
+    tests are user-reported, see the evidence below.
+  - Exception to the update rule: target reachability has no evidence. By decision it is deferred to P3 and is not a
+    P0 gate. P0 makes zero target requests. The reachability line below stays unchecked.
+  - Not cleared by P0: provider spend-limit attestation (Q13) is pending and must be done before any live testing.
 - [x] Repo-strategy ADR: `Docs/adr/001-repo-strategy.md`
 - [x] Build-versus-configure record: `Docs/BUILD_VS_CONFIGURE.md` (tool claims marked unverified)
 - [x] ADRs: framework (003), models (004), state store (005), observability (006), plus 002 target access and 007 URL
@@ -66,11 +74,13 @@ The kickoff time is not recorded in the repo, so the Architecture Defense deadli
 - [x] Safety-envelope skeleton: `src/agentforge/safety/` and `config/` (no network code, `LIVE_ENABLED = False`)
 - [x] Draft Defense evidence packet: `Docs/DEFENSE_PACKET.md`
 - [x] Verify: ADRs name rejected alternatives (`scripts/check_adrs.py`: 7 ADRs, 0 problems; a one-alternative ADR failed)
-- [ ] Verify: target reachability. **UNVERIFIED.** P0 makes zero target requests. Deferred to P3. The agent's `/ready`
-  is private by design, so the later check is a read-only GET of the public OpenEMR login page.
+- [ ] Verify: target reachability. **UNVERIFIED, deferred to P3** (exception to the update rule, see Status). P0 makes
+  zero target requests. The agent's `/ready` is private by design, so the later check is a read-only GET of the public
+  OpenEMR login page.
 - [x] Verify: allowlist default-deny unit test (`tests/test_allowlist.py`, `tests/test_chokepoint.py`)
 - [x] CI written: `.github/workflows/ci.yml` (lint, mypy, tests and coverage, Bandit, secret scan, link check, ADR
-  check, workflow guard). **Not run on GitHub Actions: UNVERIFIED** until the first push.
+  check, workflow guard). GitHub Actions CI #1 on commit `4bbd1b6`: **passed, user-reported**. Not independently
+  confirmed by the assistant, and no run log is stored here.
 - Evidence, rerun 2026-10-17 on Python **3.12.15** (Homebrew `python@3.12`, venv under `/tmp`, tools at the pinned
   versions). The same commands passed earlier on 3.10.13, with identical results:
   - `ruff check src tests scripts --select E9,F63,F7,F82`: All checks passed.
@@ -93,8 +103,8 @@ The kickoff time is not recorded in the repo, so the Architecture Defense deadli
     `trycloudflare.com` hostname, which the handoff says is ephemeral and stale. It is a hostname, not a secret.
   - Planning doc sha256 before P0 edits are in `TARGET_FREEZE.md`. ROADMAP and DECISIONS were then edited on purpose
     (path labels, reachability line, D-010 to D-012). PROGRESS.md was unchanged until this entry.
-  - `git rev-parse HEAD` still fails (no commits). `git remote -v` shows `origin` unchanged. No file outside this repo
-    was written except the throwaway venv in `/tmp`. No request was made to the target, no model was called, no money spent.
+  - At the time of that review nothing was committed. The commit came afterwards (`4bbd1b6`, see Status). No file
+    outside this repo was written except the throwaway venv in `/tmp`. No request was made to the target, no model was called, no money spent.
 - Manual smoke tests, executed by the user on 2026-10-17 against local-only test data, with sockets blocked and no
   repo files modified. All four were reported successful. The assistant did not run them and did not see their output,
   so this is user-reported evidence, and the exact terminal output was not captured here.
@@ -106,8 +116,10 @@ The kickoff time is not recorded in the repo, so the Architecture Defense deadli
   - Missing spend-limit attestation: the shipped `config/spend_limits.yaml` (no attestations) refuses OpenRouter use, so
     the chokepoint refuses at the `spend_limit` gate. No attestation was created and no provider was queried.
 - Not verified, and why:
-  - Python 3.12 is no longer an open item: all checks passed on 3.12.15 locally. CI on GitHub's 3.12 image is still unrun.
-  - GitHub Actions: nothing pushed. The repo exists and `git ls-remote origin` works, but push access is untested.
+  - Python 3.12 is no longer an open item: all checks passed on 3.12.15 locally, and CI #1 on GitHub's runner passed
+    per the user.
+  - GitHub Actions: the push worked (`4bbd1b6` is on `origin/main`). The CI #1 pass is user-reported and not independently
+    confirmed by the assistant.
   - Target reachability, synthetic identity existence and whether the running stack equals the pinned SHA (A-001, A-004).
   - Provider-side spend limits (Q13): the gate exists and refuses; the limits are not set or attested.
 
@@ -252,3 +264,4 @@ Record every paid call. The PRD asks for actual development spend.
 | 2026-10-17 | Roadmap revision 2, DECISIONS.md and PROGRESS.md created. No implementation started. |
 | 2026-10-17 | P0 implemented locally in `agentforge-platform` (adapted plan in `P0_plan.md`). Checked on Python 3.10.13 only. Nothing committed or pushed. Reachability, Python 3.12 and GitHub Actions UNVERIFIED. |
 | 2026-10-17 | Rechecked on Python 3.12.15, all local P0 checks pass. User ran four manual smoke tests (allowlist, budget, kill switch, missing OpenRouter attestation), reported successful. Target reachability remains deferred to P3. GitHub Actions remains UNVERIFIED until CI runs. |
+| 2026-10-17 | P0 marked done. Commit `4bbd1b6` pushed to `origin/main`. GitHub Actions CI #1 passed (user-reported, not independently confirmed by the assistant). 74 automated tests and four manual smoke tests recorded. Target reachability stays deferred to P3 (exception to the update rule). Provider spend-limit attestation (Q13) is pending before live testing. Nothing committed for this edit. |
