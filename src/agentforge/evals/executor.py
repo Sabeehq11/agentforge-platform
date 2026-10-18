@@ -78,15 +78,19 @@ def summarize(results: tuple[CaseResult, ...]) -> dict[str, int]:
 
 
 def run_dry(cases: tuple[Case, ...] | None = None, *, budget: Budget | None = None) -> tuple[CaseResult, ...]:
-    """No transport. Local cap-stop may pass. Everything else is not_run."""
+    """No transport. A local cap stop is not a graded target result."""
+    del budget
     selected = cases if cases is not None else load_cases()
-    out: list[CaseResult] = []
-    for case in selected:
-        if case.grader == "attack_count":
-            out.append(_grade_cap(case, budget))
-            continue
-        out.append(_result(case, "not_run", "dry-run does not call the target"))
-    return tuple(out)
+    return tuple(
+        _result(
+            case,
+            "not_run",
+            "TM-DS-3 was not sent to the target; a local cap stop is not a graded result"
+            if case.grader == "attack_count"
+            else "dry-run does not call the target",
+        )
+        for case in selected
+    )
 
 
 def _grade_cap(case: Case, budget: Budget | None) -> CaseResult:
@@ -178,14 +182,15 @@ def run_session_case(
     client: SessionClient,
     *,
     credentials: LoginRequest | None = None,
+    fixture_pid: str | None = None,
 ) -> CaseResult:
     """One case on the public-module path. Identity mismatch stops the run. Missing patient context is not_run.
 
-    TM-EX-2 and TM-PI-2 stay not_run: the pinned source has no authorized patient-open or upload step. TM-DS-3
-    never contacts the target. A 409 is error. A 401 or 403 on the missing-authority case is graded, not invented.
+    TM-EX-2 and TM-PI-2 stay not_run: the pinned source has no authorized upload or other-patient step. TM-DS-3
+    is not graded from the local cap. A 409 is error. A 401 or 403 on the missing-authority case is graded.
     """
     if case.grader == "attack_count" or case.case_id == "seed-tm-ds-3":
-        return _grade_cap(case, client.budget)
+        return _result(case, "not_run", "TM-DS-3 was not sent to the target; a local cap stop is not a graded result")
     if case.case_id in _NOT_RUN_LIVE or case.channel == "upload" or case.grader == "patient_boundary":
         return _result(
             case,
@@ -209,13 +214,15 @@ def run_session_case(
         return _result(case, "not_run", f"{case.grader} is not on the public-module chat path")
     if credentials is None:
         return _result(case, "not_run", "no synthetic credentials were supplied")
+    if not fixture_pid:
+        return _result(case, "not_run", "operator fixture pid was not supplied; chat was not sent")
     try:
         client.login(credentials)
         client.read_dock()
+        client.open_patient(fixture_pid)
     except (RefusedByChokepoint, SessionError, IdentityMismatch):
         return _result(case, "error", "session setup failed after the identity check")
-    if not client.confirm_patient_context():
-        # The identity GET already happened. No chat POST. not_run, not pass and not error.
+    if not client.session.patient_context_confirmed:
         if len(client.session.calls) <= before:
             return _result(case, "error", "identity check recorded no call")
         return _result(case, "not_run", "patient context is not confirmed; chat was not sent")
@@ -270,7 +277,7 @@ def run_live_case(
 ) -> CaseResult:
     """One case through the chokepoint. A refusal is not_run. A transport error after the gates is error."""
     if case.grader == "attack_count":
-        return _grade_cap(case, budget)
+        return _result(case, "not_run", "TM-DS-3 was not sent to the target; a local cap stop is not a graded result")
     if not LIVE_ENABLED and not fake_transport:
         return _result(case, "not_run", "LIVE_ENABLED is false; env flags cannot start a live call")
     try:

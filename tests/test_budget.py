@@ -116,3 +116,13 @@ def test_kill_switch_blocks_next_reserve() -> None:
 def test_negative_amount_rejected() -> None:
     with pytest.raises(ValueError):
         approved().reserve(-1.0)
+
+
+def test_release_returns_an_unused_reservation() -> None:
+    b = approved(caps(max_attacks_per_run=1))
+    b.reserve(0.4)
+    b.release(0.4)
+    assert b.run_spent == pytest.approx(0.0)
+    assert b.attacks == 0
+    b.reserve(0.4)
+    assert b.attacks == 1

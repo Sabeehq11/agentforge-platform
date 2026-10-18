@@ -21,7 +21,7 @@ from referencing import Registry, Resource
 from referencing.jsonschema import DRAFT202012
 
 CONTRACTS = Path(__file__).resolve().parents[3] / "contracts" / "v1"
-MESSAGES = ("campaign_request", "attack_result", "verdict", "confirmed_exploit")
+MESSAGES = ("campaign_request", "attack_result", "verdict", "confirmed_exploit", "recorded_transcript")
 ERRORS = (
     "target_unreachable",
     "budget_exceeded",

@@ -1,5 +1,5 @@
 ##
-# Platform CI (P0, plus the P1 threat-model check and the P2 contract checks). Lint, typecheck, tests with a coverage floor, security scan,
+# Platform CI (P0 through P4). Lint, typecheck, tests with a coverage floor, security scan,
 # secret scan, markdown link check and a workflow guard. No secrets, no model calls, no request to the target: every
 # test runs with sockets disabled.
 # Live and paid runs are never part of this workflow. Later checkpoints add jobs and never remove one (ROADMAP 6).
@@ -83,3 +83,6 @@ jobs:
 
     - name: Synthetic-data scan and allowlist tests (no live calls)
       run: python -m pytest tests/test_evals.py tests/test_p3_envelope.py tests/test_allowlist.py -q
+
+    - name: Judge evaluation on the labeled set (recorded or stub responses only)
+      run: python -m pytest tests/test_p4_judge.py -q

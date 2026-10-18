@@ -4,9 +4,11 @@ Pinned SHA 9f036541cf95e896db065e0c652afb75627b03c2. Identity is a GET of the pu
 POST of a synthetic fixture user. Chat is POST JSON to the endpoint named by data-endpoint, with X-CSRF-Token
 from data-csrf. The cookie stays in memory. It is not written to a refusal log or a result file.
 
-That pin does not show an authorized public-module step that sets the open patient. This client does not guess a
-set-pid URL, query parameter, or other endpoint, and it does not bypass session, CSRF, or patient authorization.
-Without confirmed patient context, a chat case is not executed.
+The open patient is the existing OpenEMR session pid. This client GETs the pinned demographics page with the
+operator pid as the only set_pid value, then reads the current session pid back from library/ajax/set_pt.php.
+The read-back uses mode=session_key and key=pid and does not send a set_pid writer. A match proves the current
+session pid equals the operator pid after this attempt; it does not prove the session was previously empty.
+Without that exact read-back, a chat case is not executed.
 """
 
 from __future__ import annotations
@@ -16,7 +18,8 @@ import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date
-from urllib.parse import urlencode, urljoin
+from http.client import HTTPConnection, HTTPSConnection
+from urllib.parse import parse_qs, urlencode, urljoin, urlsplit
 
 from agentforge.evals.login import LoginRequest
 from agentforge.safety.allowlist import Allowlist
@@ -30,6 +33,8 @@ from agentforge.safety.spend_limits import Attestation
 # Relative to the site origin. Copied from the pinned public module, not invented.
 CHAT_PATH = "/interface/modules/custom_modules/oe-module-copilot/public/chat.php"
 DOCK_PATH = "/interface/modules/custom_modules/oe-module-copilot/public/dock.php"
+DEMOGRAPHICS_PATH = "/interface/patient_file/summary/demographics.php"
+SESSION_PID_PATH = "/library/ajax/set_pt.php"
 _CSRF = re.compile(r"""data-csrf=["']([^"']+)["']""")
 _ENDPOINT = re.compile(r"""data-endpoint=["']([^"']+)["']""")
 _SSE_EVENTS = frozenset({"answer", "declined", "denied", "degraded", "error", "conversation"})
@@ -227,11 +232,38 @@ class SessionClient:
     def read_dock(self) -> None:
         """Read data-csrf and data-endpoint. Does not set patient context."""
         response = self._request("GET", urljoin(self.origin + "/", DOCK_PATH.lstrip("/")))
-        if response.status != 200:
+        if response.status != 200 or response.location:
             raise SessionError(f"dock status {response.status}")
         csrf, endpoint = dock_markers(response.body.decode("utf-8"))
         self.session.csrf = csrf
         self.session.chat_url = urljoin(self.origin + "/", endpoint)
+
+    def open_patient(self, pid: str) -> None:
+        """GET demographics with the operator pid, then read the current session pid back.
+
+        Confirmation starts false for this attempt. A matching read-back does not prove the session was previously empty.
+        """
+        self.session.patient_context_confirmed = False
+        if not pid.isdigit() or int(pid) <= 0:
+            raise SessionError("operator pid is missing or not a positive integer")
+        if not self.session.cookie:
+            raise SessionError("patient open was not sent: login cookie is missing")
+        if not self.session.csrf:
+            raise SessionError("patient open was not sent: csrf is missing")
+        demographics, readback_url, readback_body = patient_open_urls(self.origin, pid, self.session.csrf)
+        verify_demographics_query(demographics, pid)
+        opened = self._request("GET", demographics)
+        if opened.status != 200 or opened.location:
+            raise SessionError(f"patient open status {opened.status}")
+        readback = self._request(
+            "POST",
+            readback_url,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            body=urlencode(readback_body),
+        )
+        if readback.status != 200 or readback.location or not _session_pid_matches(readback.body, pid):
+            raise SessionError("session pid read-back did not match the operator pid")
+        self.session.patient_context_confirmed = True
 
     def confirm_patient_context(self) -> bool:
         """True only when the injected verified workflow says the open patient is confirmed.
@@ -284,6 +316,60 @@ class SessionClient:
         return ChatTurn(response.status, events, answer_text(events) or response.body.decode("utf-8", "replace"), found)
 
 
+def verify_demographics_query(url: str, pid: str) -> None:
+    """The demographics GET may contain only set_pid, and that value must be the operator pid."""
+    parts = urlsplit(url)
+    if parts.path != DEMOGRAPHICS_PATH or _single_query(parts.query) != {"set_pid": pid}:
+        raise SessionError("demographics GET did not contain the exact operator pid")
+
+
+def patient_open_urls(origin: str, pid: str, csrf: str) -> tuple[str, str, dict[str, str]]:
+    """Pinned patient-open requests. The read-back body is read-only and has no set_pid writer."""
+    demographics = _checked_url(origin, DEMOGRAPHICS_PATH, {"set_pid": pid})
+    body = {"mode": "session_key", "key": "pid"}
+    readback = _checked_url(origin, SESSION_PID_PATH, {"csrf_token_form": csrf})
+    _reject_set_pid_writer(readback, body)
+    return demographics, readback, body
+
+
+def _checked_url(origin: str, path: str, query: dict[str, str]) -> str:
+    """Build an origin-relative URL and require its path and query to be exactly the supplied values."""
+    url = urljoin(origin.rstrip("/") + "/", path.lstrip("/") + "?" + urlencode(query))
+    parts = urlsplit(url)
+    if parts.path != path or _single_query(parts.query) != query:
+        raise SessionError("patient open request did not match the pinned path and query")
+    return url
+
+
+def _single_query(query: str) -> dict[str, str]:
+    parsed = parse_qs(query, keep_blank_values=True, strict_parsing=True)
+    if any(len(values) != 1 for values in parsed.values()):
+        raise SessionError("patient open query has a repeated parameter")
+    return {key: values[0] for key, values in parsed.items()}
+
+
+def _reject_set_pid_writer(url: str, body: dict[str, str]) -> None:
+    """The read-back is not a writer. set_pid is allowed only on the demographics GET."""
+    query = _single_query(urlsplit(url).query)
+    if "set_pid" in query or "set_pid" in body:
+        raise SessionError("session pid read-back must not send set_pid")
+    if query.keys() != {"csrf_token_form"} or body != {"mode": "session_key", "key": "pid"}:
+        raise SessionError("session pid read-back parameters were not the pinned read-only pair")
+
+
+def _session_pid_matches(body: bytes, pid: str) -> bool:
+    """True only when set_pt.php echoed a JSON value equal to the operator pid.
+
+    This is the current session pid after this attempt. It does not prove the session was previously empty.
+    Quotes are from js_escape.
+    """
+    try:
+        echoed = json.loads(body.decode("utf-8"))
+    except (UnicodeError, json.JSONDecodeError):
+        return False
+    return bool(echoed == pid)
+
+
 def _cookie(response: Response) -> str | None:
     headers = response.headers or {}
     for key, value in headers.items():
@@ -292,13 +378,45 @@ def _cookie(response: Response) -> str | None:
     return None
 
 
-def real_transport(method: str, url: str, headers: dict[str, str] | None = None, body: bytes | str | None = None) -> Response:
-    """No socket in this checkpoint. A hostname argument cannot enable a live call.
+_CONNECT_TIMEOUT = 10.0
+_REDIRECTS = frozenset({301, 302, 303, 307, 308})
+# Test seam only. request() still runs first. Not read from the environment and not a live bypass.
+connection_opener: Callable[..., HTTPConnection] | None = None
 
-    The body is accepted so the signature matches the widened transport, then discarded. Opening a connection is a
-    later reviewed change, behind LIVE_ENABLED, and still has to pass request().
+
+def real_transport(
+    method: str,
+    url: str,
+    headers: dict[str, str] | None = None,
+    body: bytes | str | None = None,
+    *,
+    timeout: float = _CONNECT_TIMEOUT,
+) -> Response:
+    """One HTTP call. Does not check allowlist, budget, or attestation; request() does that first.
+
+    LIVE_ENABLED is checked before any connection. Redirects are returned with Location and not followed.
+    429 and 503 are returned once and not retried. connection_opener is a test seam; it is not an enable flag.
     """
-    del method, url, headers, body
     if not LIVE_ENABLED:
         raise RefusedByChokepoint("live", "live use is disabled (LIVE_ENABLED is False)")
-    raise RefusedByChokepoint("live", "no live client is wired in this checkpoint")
+    parts = urlsplit(url)
+    if not parts.hostname or parts.scheme not in ("http", "https"):
+        raise RefusedByChokepoint("live", "live transport accepts only http and https URLs")
+    path = parts.path or "/"
+    if parts.query:
+        path = path + "?" + parts.query
+    payload = body.encode("utf-8") if isinstance(body, str) else body
+    port = parts.port if parts.port is not None else (443 if parts.scheme == "https" else 80)
+    connect = (
+        connection_opener
+        if connection_opener is not None
+        else (HTTPSConnection if parts.scheme == "https" else HTTPConnection)
+    )
+    conn = connect(parts.hostname, port, timeout=timeout)
+    try:
+        conn.request(method, path, body=payload, headers=headers or {})
+        res = conn.getresponse()
+        location = res.getheader("Location") if res.status in _REDIRECTS else None
+        return Response(status=res.status, body=res.read(), location=location, headers=dict(res.getheaders()))
+    finally:
+        conn.close()

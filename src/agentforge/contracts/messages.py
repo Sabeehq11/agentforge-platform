@@ -62,7 +62,11 @@ class AttackResult(TypedDict):
 
 
 class Verdict(TypedDict):
-    """Judge to regression harness. No attacker claim of success."""
+    """Judge to regression harness. No attacker claim of success.
+
+    needs_human_review is an optional schema field. It is not a required key here, because the contract
+    test equates TypedDict keys with required schema fields. A timeout is not a verdict and does not use it.
+    """
 
     message_id: str
     correlation_id: str

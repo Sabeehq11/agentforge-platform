@@ -27,7 +27,7 @@ The kickoff time is not recorded in the repo, so the Architecture Defense deadli
 | Synthetic-data fixtures and transcript scan | in progress | Synthetic fixtures and the PHI scan exist and are tested. No live transcript has been stored |
 | Per-run and per-day USD caps, attack-count cap, approval token | in progress | `budget.py` and tests in P0. Not approved for any run |
 | Provider-side spending limit on every key (DECISIONS Q13) | in progress | Attestation gate in P0 refuses while `spend_limits.yaml` is empty. Limits not set |
-| Per-agent cost metering and kill switch | in progress | Kill switch in `budget.py`. Per-agent metering is P4 |
+| Per-agent cost metering and kill switch | in progress | Kill switch in `budget.py`. P4 ledger separates reserved and incurred for `red_team`, `judge` and fixture `target`. Not exercised on a live run |
 | Request-rate cap toward the target | in progress | `rate.py` and tests. A 429 is not retried. Not exercised against the running target |
 | Human approval for over-cap runs, new allowlist entries, load tests | not started | |
 
@@ -212,17 +212,31 @@ are unverified (G-2).
   - Still open, and not closed by this evidence: the approved live run under `evals/` (checkbox above stays unchecked). H-3 stays unmet. H-4 and the Stage 3 live-agent sentence stay partial until P4. G-1, E-6, and the live half of E-3 stay open. S-1 stays partial until the running stack is confirmed equal to `9f03654`. E-1 stays partial because the allowlist is empty. No row in [PRD_TRACEABILITY.md](PRD_TRACEABILITY.md) was marked met by this pass. Nothing committed or pushed.
 
 ### P4. Judge prototype, Red Team seed
-- Status: not started. Depends on: P3, P0 model ADR.
-- [ ] Judge with deterministic rules then LLM for ambiguous cases
-- [ ] Labeled ground-truth set, drift procedure
-- [ ] Minimal Red Team under budget
-- [ ] Cost metering and kill switch
-- [ ] Verify: precision, recall, false-positive rate measured
-- [ ] Verify: never approves a confirmed exploit as safe
-- [ ] Verify: cap halts before next call
+- Status: in progress. Depends on: P3, P0 model ADR. Not done: H-4, M-12, M-3, M-4, and E-7 stay open on the evidence bars in [PRD_TRACEABILITY.md](PRD_TRACEABILITY.md). H-3 stays unmet and owned by P3. No row was moved.
+- [x] Judge with deterministic rules then LLM for ambiguous cases
+- [x] Labeled ground-truth set, drift procedure
+- [x] Minimal Red Team under budget
+- [x] Cost metering and kill switch
+- [x] Verify: precision, recall, false-positive rate measured
+- [x] Verify: never approves a confirmed exploit as safe
+- [x] Verify: cap halts before next call
 - [ ] Verify: one live run, stored traceable finding
-- [ ] CI: Judge eval with recorded or stub responses
-- Evidence:
+- [x] CI: Judge eval with recorded or stub responses
+- Evidence, 2026-10-18, Python 3.12.15 at `/private/tmp/p2pin/bin/python`. No request to the target, no model call, no spend. `LIVE_ENABLED` remains false. `config/allowlist.yaml` remains empty. `config/spend_limits.yaml` remains empty. `config/models.yaml` remains `TBD`:
+  - Judge: `src/agentforge/agents/judge.py`. Families are loaded from `config/models.yaml` through `load_models`. A config where Red Team and Judge share a family is refused. A verdict requires a `recorded_transcript` that `validate()` accepts and that `recorded_by` is `executor`. `judge()` with only an `AttackResult` returns `no_findings_in_window` and no verdict. An attacker `observed_behavior` of `fail` does not override a transcript the canary grader marks `pass`. A transcript the canary grader marks `fail` returns a draft `ConfirmedExploit` and does not call the stub, including when the stub would say `pass` and the claim says `pass`.
+  - Labeled set: three synthetic items in `evals/judge/labeled/` (`benign` and `near_miss`). Positive class is `fail`. `assert_no_drift` compares those rates to `evals/judge/baseline.json` and raises on a drop. A constructed drop (recall below the file) raises `LabelRejected`. Drift procedure: `Docs/JUDGE_DRIFT.md`. These rates are stub-mode, not a provider evaluation.
+  - Red Team seed: `src/agentforge/agents/red_team.py` mutates one existing seed through the ledger. The mutation is a suffix, a trailing space, and the original turn copied once. After `Budget.kill()`, `propose` returns `budget_exceeded`, `mutations` stays 0, and neither reserved nor incurred is written. At the attack-count cap the next `propose` returns `budget_exceeded` and does not increment `mutations`.
+  - Ledger: migration `0002` adds `agent_spend` with separate `reserved_usd` and `incurred_usd`. The reserved row is written before `Budget.reserve`; a refusal deletes it. `release` returns the amount to the budget and leaves incurred at 0. A refused stub releases the Judge reservation and does not incur. `Ledger.combined` raises rather than adding the two columns. Target-side amounts in tests are fixtures. No usage API was called.
+  - Probe: `Docs/MODEL_PROBE.md` records `not run against a provider`. `evals/judge/probe/candidates.json` is placeholders. M-12 stays not started.
+  - Local CI after the ledger fix, 2026-10-18: ruff exit 0, mypy exit 0 (30 source files), pytest 213 passed, 90.48% coverage (floor 85%), Bandit exit 0, `pytest tests/test_p4_judge.py` 25 passed. GitHub Actions has not run on these files: **UNVERIFIED** until the user pushes.
+  - Still open, and not closed by this evidence: the approved live run and its stored finding (checkbox above stays unchecked). H-4 stays unmet. H-3 stays unmet and owned by P3. G-1, E-6, and the live half of E-3 stay open. No hostname was written. Nothing committed or pushed.
+  - Gap closure, 2026-10-18, local only. No target request, no provider call, no spend. `LIVE_ENABLED` remains false. Allowlist and spend attestation remain empty. `config/models.yaml` remains `TBD`.
+    - Local CI after the gap closure: ruff exit 0, mypy exit 0 (30 source files), pytest 216 passed, 90.45% coverage (floor 85%), Bandit exit 0, schema diff 0 breaking, link check 0 problems, `pytest tests/test_p4_judge.py` 28 passed. GitHub Actions has not run on these files.
+    - Metric test: an `error_code` is not scored as `fail`. A draft exploit is still a confirmed fail. `tests/test_p4_judge.py`.
+    - Category criteria: TM-PI-1, TM-PI-2, TM-PI-3, TM-EX-2, TM-EX-3, and TM-DS-3 each use their existing grader. Optional `attacks_before`, `attacks_after`, and `attack_cap` were added to `recorded_transcript`. A subcategory with no bound grader is uncertain.
+    - Escalation: optional `needs_human_review` on Verdict v1. A stub `partial` sets it and stores no exploit. `judge_timeout` stays an error with `detail` `needs_human_review`. It is not converted to a partial verdict. The reservation is released.
+    - Drift: `label-drift-quote` was hand-labeled `pass` before judgment. The stub Judge returned `fail`. Review is in [JUDGE_DRIFT.md](JUDGE_DRIFT.md). The fixture was corrected. The label was not. The re-score changed `labeled` from 3 to 4. Rates stayed 1.0, 1.0, and 0.0. The baseline records that count. It was not edited to pass CI.
+    - Ownership, unchanged: M-3 partial until two graded target versions match. M-4 partial until a provider Judge is checked. E-7 partial until a live run records an operator-supplied target-side amount. M-12 unmet until an approved probe replaces the fixture candidates and `config/models.yaml` leaves `TBD`. H-3 unmet, owned by P3. H-4 unmet until a live agent run stores a traceable finding. Stage 3 stays unmet until H-3 and H-4 are both met.
 
 ### P5. MVP pack
 - Status: not started. Depends on: P1 to P4.

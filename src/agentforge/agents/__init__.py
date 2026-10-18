@@ -1,4 +1,4 @@
-"""Agent protocols. Shapes only. No agent is implemented in P2."""
+"""Agent protocols, plus the P4 Judge and the minimal Red Team. No Orchestrator or Documentation agent."""
 
 from agentforge.agents.interfaces import Documentation, Harness, Judge, Orchestrator, RedTeam
 

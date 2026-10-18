@@ -146,3 +146,6 @@ Every change to an inter-agent message schema or the store schema is recorded he
 |---|---|---|---|---|
 | 2026-10-17 | Message schemas: CampaignRequest, AttackResult, Verdict, ConfirmedExploit, five error schemas | none to v1 | no | [0001](migrations/0001-initial-schema.md). First publication, in `contracts/v1/` |
 | 2026-10-17 | Store schema: exploits, regression cases, run logs, coverage metrics | none to 0001 | no | [0001](migrations/0001-initial-schema.md) |
+| 2026-10-18 | RecordedTranscript added under contracts/v1. Optional relative to the four P2 messages. Not a message between agents | none to v1 | no | [0002](migrations/0002-agent-spend.md). The transcript is not a store table |
+| 2026-10-18 | Store schema: agent_spend, reserved and incurred as separate columns | 0001 to 0002 | no | [0002](migrations/0002-agent-spend.md) |
+| 2026-10-18 | RecordedTranscript: optional attacks_before, attacks_after, attack_cap. Verdict: optional needs_human_review | none to v1 | no | Optional fields. No version bump. Existing records and messages stay valid |

@@ -129,3 +129,16 @@ class Budget:
         self._day_spent += usd
         if attack:
             self._attacks += 1
+
+    def release(self, usd: float, *, attack: bool = True) -> None:
+        """Return an unused reservation to the cap. Does not record spend and is not blocked by the kill switch."""
+        if usd < 0:
+            raise ValueError("release amount must not be negative")
+        if usd > self._run_spent:
+            raise ValueError("cannot release more than this run reserved")
+        if attack and self._attacks < 1:
+            raise ValueError("no attack reservation to release")
+        self._run_spent -= usd
+        self._day_spent -= usd
+        if attack:
+            self._attacks -= 1

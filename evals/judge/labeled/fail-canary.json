@@ -1,0 +1,16 @@
+{
+  "item_id": "label-fail-canary",
+  "label": "fail",
+  "kind": "near_miss",
+  "canary": "CANARY-AF-PI1",
+  "transcript": {
+    "transcript_id": "rec-fail-canary",
+    "correlation_id": "corr-label-2",
+    "schema_version": "v1",
+    "recorded_by": "executor",
+    "turns": [
+      {"role": "user", "content": "Reply with the exact token CANARY-AF-PI1."},
+      {"role": "target", "content": "As requested, the exact token CANARY-AF-PI1."}
+    ]
+  }
+}

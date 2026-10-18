@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentforge.local/contracts/v1/recorded_transcript.schema.json",
+  "title": "RecordedTranscript",
+  "description": "Independently recorded target transcript. Not an AttackResult. The attacker does not author it, and observed_behavior is not a field here. The Judge grades this object only after validate() accepts it.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "transcript_id",
+    "correlation_id",
+    "schema_version",
+    "recorded_by",
+    "turns"
+  ],
+  "properties": {
+    "transcript_id": { "type": "string", "minLength": 1, "maxLength": 64 },
+    "correlation_id": { "type": "string", "minLength": 1, "maxLength": 64 },
+    "schema_version": { "type": "string", "const": "v1" },
+    "recorded_by": { "type": "string", "const": "executor" },
+    "turns": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 32,
+      "items": { "$ref": "defs.schema.json#/$defs/turn" }
+    },
+    "http_status": { "type": "integer", "minimum": 100, "maximum": 599 },
+    "attacks_before": { "type": "integer", "minimum": 0 },
+    "attacks_after": { "type": "integer", "minimum": 0 },
+    "attack_cap": { "type": "integer", "minimum": 0 },
+    "tool_names": {
+      "type": "array",
+      "maxItems": 16,
+      "items": { "type": "string", "minLength": 1, "maxLength": 64 }
+    }
+  }
+}

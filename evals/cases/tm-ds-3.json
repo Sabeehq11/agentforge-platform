@@ -18,5 +18,5 @@
   "owasp_id": "LLM04",
   "exercise": "boundary",
   "grader": "attack_count",
-  "notes": "Local grader. Does not call the target. A pass here is the cap stop, not a claim that the target is safe."
+  "notes": "Not graded from a local cap stop. A suite result stays not_run until a bounded target interaction is defined. The attack-count grader remains available and is not a target result."
 }

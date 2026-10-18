@@ -10,7 +10,7 @@ import pytest
 
 from agentforge.safety import chokepoint
 from agentforge.safety.allowlist import Allowlist, Entry
-from agentforge.safety.budget import Budget, Caps, approval_token
+from agentforge.safety.budget import Budget, Caps, approval_token, load_caps
 from agentforge.safety.chokepoint import RefusedByChokepoint, Response, request
 from agentforge.safety.identity import IdentityMismatch, check_login_page
 from agentforge.safety.phi import PhiRefused, require_clean, scan
@@ -214,6 +214,164 @@ def test_refusal_log_unparsed_url_and_disabled_log(tmp_path: Path) -> None:
     written = RefusalLog(tmp_path / "refusals.log")
     written.record("allowlist", "bad", "http://[")
     assert "host=-" in (tmp_path / "refusals.log").read_text(encoding="utf-8")
+
+
+class FakeResponse:
+    def __init__(self, status: int, body: bytes, headers: list[tuple[str, str]]) -> None:
+        self.status = status
+        self._body = body
+        self._headers = headers
+
+    def read(self) -> bytes:
+        return self._body
+
+    def getheader(self, name: str) -> str | None:
+        for key, value in self._headers:
+            if key.lower() == name.lower():
+                return value
+        return None
+
+    def getheaders(self) -> list[tuple[str, str]]:
+        return list(self._headers)
+
+
+class FakeConn:
+    def __init__(self, response: FakeResponse) -> None:
+        self.response = response
+        self.sent: list[tuple[str, str, bytes | None, dict[str, str]]] = []
+        self.closed = False
+
+    def request(self, method: str, path: str, body: bytes | None = None, headers: dict[str, str] | None = None) -> None:
+        self.sent.append((method, path, body, dict(headers or {})))
+
+    def getresponse(self) -> FakeResponse:
+        return self.response
+
+    def close(self) -> None:
+        self.closed = True
+
+
+def test_real_transport_refuses_before_opener_while_live_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    from agentforge.evals import session
+
+    def opener(host: str, port: int, timeout: float) -> FakeConn:
+        del host, port, timeout
+        raise AssertionError("socket opened while LIVE_ENABLED is false")
+
+    monkeypatch.setattr(session, "connection_opener", opener)
+    with pytest.raises(RefusedByChokepoint) as caught:
+        session.real_transport("GET", "https://target.example/login.php")
+    assert caught.value.gate == "live"
+
+
+def test_real_transport_returns_redirect_without_following(monkeypatch: pytest.MonkeyPatch) -> None:
+    from agentforge.evals import session
+
+    conn = FakeConn(FakeResponse(302, b"", [("Location", "https://elsewhere.example/next")]))
+    monkeypatch.setattr(session, "LIVE_ENABLED", True)
+    monkeypatch.setattr(session, "connection_opener", lambda host, port, timeout: conn)
+    got = session.real_transport("GET", "https://target.example/login.php")
+    assert got.status == 302
+    assert got.location == "https://elsewhere.example/next"
+    assert len(conn.sent) == 1
+    assert conn.closed
+
+
+def test_real_transport_returns_429_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    from agentforge.evals import session
+
+    conn = FakeConn(FakeResponse(429, b"slow", [("Retry-After", "30")]))
+    monkeypatch.setattr(session, "LIVE_ENABLED", True)
+    monkeypatch.setattr(session, "connection_opener", lambda host, port, timeout: conn)
+    got = session.real_transport("GET", "https://target.example/login.php")
+    assert got.status == 429
+    assert got.body == b"slow"
+    assert len(conn.sent) == 1
+    assert conn.closed
+
+
+def test_request_refuses_gates_before_real_transport_socket(monkeypatch: pytest.MonkeyPatch) -> None:
+    from agentforge.evals import session
+
+    opened: list[str] = []
+
+    def opener(host: str, port: int, timeout: float) -> FakeConn:
+        del host, port, timeout
+        opened.append("opened")
+        raise AssertionError("socket opened before a gate passed")
+
+    monkeypatch.setattr(session, "connection_opener", opener)
+
+    def transport(method: str, url: str, headers: dict[str, str] | None = None, body: bytes | str | None = None) -> Response:
+        return session.real_transport(method, url, headers, body)
+
+    monkeypatch.setattr(chokepoint, "LIVE_ENABLED", True)
+    monkeypatch.setattr(session, "LIVE_ENABLED", True)
+    with pytest.raises(RefusedByChokepoint) as off_list:
+        request(
+            "GET",
+            "https://not-listed.example/interface/login/login.php",
+            transport=transport,
+            allowlist=allow(),
+            budget=good_budget(),
+            attestations=ATT,
+            provider="openrouter",
+            est_cost_usd=0.05,
+            today=TODAY,
+            fake_transport=False,
+        )
+    assert off_list.value.gate == "allowlist"
+    assert opened == []
+
+    monkeypatch.setattr(chokepoint, "LIVE_ENABLED", False)
+    with pytest.raises(RefusedByChokepoint) as unapproved:
+        call(Spy(), transport=transport, budget=Budget(CAPS), fake_transport=False)
+    assert unapproved.value.gate == "live"
+    assert opened == []
+
+    monkeypatch.setattr(chokepoint, "LIVE_ENABLED", True)
+    with pytest.raises(RefusedByChokepoint) as still_unapproved:
+        call(Spy(), transport=transport, budget=Budget(CAPS), fake_transport=True)
+    assert still_unapproved.value.gate == "budget"
+    assert opened == []
+
+    with pytest.raises(RefusedByChokepoint) as missing:
+        call(Spy(), transport=transport, attestations=[], fake_transport=True)
+    assert missing.value.gate == "spend_limit"
+    assert opened == []
+
+
+def test_identity_runner_refuses_live_before_socket(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("live_identity", Path("scripts/live_identity.py"))
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    from agentforge.evals import session
+
+    def boom(host: str, port: int, timeout: float) -> FakeConn:
+        del host, port, timeout
+        raise AssertionError("socket opened by the identity runner")
+
+    monkeypatch.setattr(session, "connection_opener", boom)
+    monkeypatch.delenv("AGENTFORGE_BUDGET_SECRET", raising=False)
+    root = tmp_path / "repo"
+    (root / "config").mkdir(parents=True)
+    for name in ("allowlist.yaml", "budget.yaml", "spend_limits.yaml"):
+        (root / "config" / name).write_text((Path("config") / name).read_text(encoding="utf-8"), encoding="utf-8")
+    caps = load_caps(root / "config" / "budget.yaml")
+    with pytest.raises(RefusedByChokepoint) as caught:
+        module.run_identity(
+            root,
+            today=TODAY,
+            token=approval_token(caps, SECRET),
+            secret=SECRET,
+            origin="https://target.example",
+            provider="openrouter",
+        )
+    assert caught.value.gate == "live"
 
 
 def test_refusal_log_omits_password(tmp_path: Path) -> None:

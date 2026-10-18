@@ -140,14 +140,28 @@ pass.
 
 **All 69 requirement rows still have a checkpoint owner.** None was moved.
 
+## P4 local evidence (2026-10-18)
+
+Judge, labeled set, seed mutator and ledger exist and are tested with recorded or stub responses. No request was made to the target and no provider was called. H-4 stays unmet and owned by P4: a fixture draft is not a live finding. H-3 stays unmet and owned by P3. M-12 stays unmet and owned by P4: `Docs/MODEL_PROBE.md` says the probe was not run against a provider. M-3, M-4, and E-7 stay partial and owned by P4. M-2 stays partial: the seed mutator is not the P6 generator.
+
+## P4 gap closure (2026-10-18)
+
+Local only. No live call, no provider call, no allowlist or spend edit. `LIVE_ENABLED` remains false.
+
+The labeled metric test rejects an error envelope instead of scoring it as `fail`. A draft exploit is still a confirmed fail. Each of TM-PI-1, TM-PI-2, TM-PI-3, TM-EX-2, TM-EX-3, and TM-DS-3 is bound to its existing grader. A subcategory with no bound grader is uncertain. An uncertain stub `partial` sets optional `needs_human_review` on the v1 verdict and does not write an exploit. A fixture timeout stays `judge_timeout` with `detail` `needs_human_review`. It is not a partial verdict.
+
+One synthetic disagreement was judged before it was corrected. Item `label-drift-quote` was hand-labeled `pass` and the stub Judge returned `fail`. The review is in [JUDGE_DRIFT.md](JUDGE_DRIFT.md). The fixture was corrected. The hand label was not. The re-score changed `labeled` from 3 to 4 and did not change the rates, so the baseline records 4. It was not edited to pass CI.
+
+No row below was marked met by this pass. Ownership did not move.
+
 ## Hard gates
 
 | Id | PRD requirement | Checkpoint | Status | Evidence |
 |---|---|---|---|---|
 | H-1 | Deployed target URL submitted with every checkpoint | P0, then every checkpoint | gap | No URL in [TARGET_FREEZE.md](TARGET_FREEZE.md). Q2 open. G-1 |
 | H-2 | `THREAT_MODEL.md` with a ~500-word summary first, six categories, four attributes each | P1 | met | [THREAT_MODEL.md](../THREAT_MODEL.md). Summary 543 words. `scripts/check_threat_model.py`: 0 problems. Closure audit 2026-10-17 |
-| H-3 | `evals/` with results from at least three attack categories | P3 | not started | Suite exists: `evals/cases/`, six cases, TM-PI, TM-EX, TM-DS. No graded target result. Dry-run is `not_run` except the local cap stop. A file of `not_run` does not meet this row. The 2026-10-18 session client is local fake evidence only and does not close this row |
-| H-4 | One agent role running live against the deployed target | P4 | not started | No agent implemented. Stage 3 live-agent sentence is partial until P4 and is not moved here. `LIVE_ENABLED` is false |
+| H-3 | `evals/` with results from at least three attack categories | P3 | unmet | Owned by P3. P4 does not implement this row. Met only when `evals/` stores graded `pass` or `fail` from a target run in at least three categories. `not_run` does not count. Suite exists: `evals/cases/`, six cases, TM-PI, TM-EX, TM-DS. No graded target result |
+| H-4 | One agent role running live against the deployed target | P4 | unmet | Owned by P4. Met only when one agent role runs against the deployed target and the finding is stored and traceable. Judge and seed mutator exist and are tested on fixtures. No live run. `LIVE_ENABLED` is false. A local draft is not this row. The Stage 3 hard gate stays unmet until H-3 and H-4 are both met |
 | H-5 | `ARCHITECTURE.md` with a ~500-word summary, each agent named, a diagram | P5 | not started | Draft diagram only, in [DEFENSE_PACKET.md](DEFENSE_PACKET.md) |
 
 ## Stage deliverables
@@ -167,9 +181,9 @@ pass.
 | Id | PRD requirement | Checkpoint | Status | Evidence |
 |---|---|---|---|---|
 | M-1 | Distinct agents, not a single agent or a pipeline. Each has inputs, outputs, trust level | P5 to define, P6 to run | not started | Named in the draft diagram only |
-| M-2 | Novel attack generation, mutation of partial successes, multi-turn sequences | P4 seed, P6 full | not started | |
-| M-3 | Judge independent of attack generation, consistent criteria across runs and versions | P4 | not started | Independence is a decision only: ADR-004, `src/agentforge/models_config.py` |
-| M-4 | Judge ground truth, and a documented way to detect and correct drift | P4 | not started | |
+| M-2 | Novel attack generation, mutation of partial successes, multi-turn sequences | P4 seed, P6 full | partial | P4 seed only: `src/agentforge/agents/red_team.py` mutates one seed under the budget. Novel generation and multi-turn sequences are P6 and are not started |
+| M-3 | Judge independent of attack generation, consistent criteria across runs and versions | P4 | partial | Owned by P4. Independence is met on the stub path: `src/agentforge/agents/judge.py` grades a validated transcript and does not read attacker claims. Same-family config is refused. Met only after a second graded target version is stored and the same transcript criteria match. A stub re-score is not that evidence. Not moved to P6 |
+| M-4 | Judge ground truth, and a documented way to detect and correct drift | P4 | partial | Owned by P4. Detection and one stub correction are recorded: [JUDGE_DRIFT.md](JUDGE_DRIFT.md), item `label-drift-quote`. The labeled set has benign and near-miss items. The row stays partial until the same check runs on a provider Judge. Not moved |
 | M-5 | Orchestrator reads coverage gaps, open findings and regressions, and picks the next campaign | P6 | not started | |
 | M-6 | Halt or redirect when spend produces no signal | P6 | not started | Per-call caps and a kill switch exist (E-4, E-5). The signal-based redirect does not |
 | M-7 | Regression run triggered when the target version changes | P6 | not started | |
@@ -177,7 +191,7 @@ pass.
 | M-9 | Documentation agent produces the six report fields, reproducible by an engineer who was not there | P7 | not started | Fields are named in the draft packet only |
 | M-10 | Minimum three distinct vulnerability reports | P7 | not started | MVP timing unconfirmed (Q5) |
 | M-11 | Human approval before publishing critical or high findings and before any remediation. Agents propose a patch and never apply one | P7 | not started | Stated as a rule in [DEFENSE_PACKET.md](DEFENSE_PACKET.md). Not enforced in code |
-| M-12 | Model per role chosen with refusal and cost considered | P4 | not started | ADR-004 defers the choice to a budgeted probe. No probe has been run |
+| M-12 | Model per role chosen with refusal and cost considered | P4 | unmet | Owned by P4. Met only when an approved probe replaces `evals/judge/probe/candidates.json` with measured refusal and USD, and `config/models.yaml` leaves `TBD`. [MODEL_PROBE.md](MODEL_PROBE.md) stays `not run`. Not moved |
 
 ## Regression, observability, data
 
@@ -219,7 +233,7 @@ pass.
 | E-4 | Per-run and per-day USD caps, attack-count cap, approval token bound to the exact caps | P0 | partial | `src/agentforge/safety/budget.py` and tests. No run is approved |
 | E-5 | Kill switch halts before the next call | P0 | met | `budget.py`. Tested, and confirmed by a user-run smoke test recorded in [PROGRESS.md](PROGRESS.md) |
 | E-6 | Provider-side spending limit on every key | Before the first live run | gap | The gate refuses while `config/spend_limits.yaml` is empty. The limits are not set. Q13. Cannot be verified from the repo |
-| E-7 | Spend metered per agent, including target-side spend | P4 | not started | |
+| E-7 | Spend metered per agent, including target-side spend | P4 | partial | Owned by P4. Ledger evidence stands: `src/agentforge/safety/ledger.py` and migration `0002`. Reserved and incurred are separate. Met only when a live run records a target-side amount from an operator-supplied usage figure, not a fixture. Not moved to P8 |
 | E-8 | Request-rate cap toward the target | P3 | met | `src/agentforge/safety/rate.py`. `test_rate_cap_stops_before_the_next_call`. A 429 is returned and not retried |
 | E-9 | Synthetic data only. Transcripts that quote the target are scanned before storage | P3 | met | `src/agentforge/safety/phi.py`. `evals/fixtures/synthetic-intake.txt`. `test_phi_blocks_store`. A-001 is still unverified for the running deployment; that does not reopen this row |
 | E-10 | CI makes no live or paid call. Secrets never reach a forked PR | P0 | met | `.github/workflows/ci.yml` has no secrets. `scripts/check_workflows.py` forbids `pull_request_target` and secret references |

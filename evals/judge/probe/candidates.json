@@ -1,0 +1,17 @@
+{
+  "note": "Placeholder families only. Not a provider probe. No key, no hostname, no live response.",
+  "candidates": [
+    {
+      "role": "judge",
+      "family": "tbd-judge",
+      "fixture": "completed",
+      "fixture_usd": 0.0
+    },
+    {
+      "role": "red_team",
+      "family": "tbd-attacker",
+      "fixture": "refused",
+      "fixture_usd": 0.0
+    }
+  ]
+}

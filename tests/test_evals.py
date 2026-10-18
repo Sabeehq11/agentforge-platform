@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from datetime import date
 from pathlib import Path
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
@@ -62,7 +64,7 @@ def test_dry_run_does_not_call_transport_and_does_not_pass_target_cases() -> Non
     assert all(item.outcome == "not_run" for item in results)
     graded = run_dry(budget=approved())
     by_id = {item.case_id: item.outcome for item in graded}
-    assert by_id["seed-tm-ds-3"] == "pass"
+    assert by_id["seed-tm-ds-3"] == "not_run"
     assert by_id["seed-tm-pi-1"] == "not_run"
     assert by_id["seed-tm-ex-2"] == "not_run"
 
@@ -195,7 +197,8 @@ def test_live_refusal_and_rate_limit_are_not_passes() -> None:
 def test_unapproved_cap_budget_is_not_a_pass() -> None:
     case = next(item for item in load_cases() if item.grader == "attack_count")
     result = run_dry((case,), budget=Budget(Caps(1.0, 2.0, 1, 5.0, 10.0)))
-    assert result[0].outcome == "error"
+    assert result[0].outcome == "not_run"
+    assert "not sent to the target" in result[0].detail
 
 
 def test_session_path_stops_when_fingerprint_is_missing(tmp_path: Path) -> None:
@@ -272,6 +275,36 @@ def test_chat_not_sent_without_confirmed_patient_context(tmp_path: Path) -> None
     assert "not-committed" not in text
 
 
+def _session_transport(
+    captured: list[tuple[str, str, dict[str, str] | None, bytes | str | None]] | None = None,
+    *,
+    demographics: Response | None = None,
+    readback: bytes = b'"100"',
+    chat: Response | None = None,
+) -> Callable[..., Response]:
+    def transport(method: str, url: str, headers: dict[str, str] | None = None, body: bytes | str | None = None) -> Response:
+        if captured is not None:
+            captured.append((method, url, headers, body))
+        if "login.php" in url and method == "GET":
+            return Response(200, b"<html>OpenEMR login</html>")
+        if "login.php" in url and method == "POST":
+            return Response(200, b"ok", headers={"Set-Cookie": "OpenEMR=fixture-session; Path=/"})
+        if "dock.php" in url:
+            return Response(
+                200,
+                b"<div data-csrf='fixture-csrf' data-endpoint='/interface/modules/custom_modules/oe-module-copilot/public/chat.php'></div>",
+            )
+        if "demographics.php" in url:
+            return demographics or Response(200, b"<html>summary</html>")
+        if "set_pt.php" in url:
+            assert "set_pid=" not in url
+            assert headers is not None and "Cookie" in headers
+            return Response(200, readback)
+        return chat or Response(200, b"event: answer\ndata: {\"text\": \"I will not follow that.\"}\n\n")
+
+    return transport
+
+
 def test_confirmed_context_sends_question_and_csrf_without_logging_cookie(tmp_path: Path) -> None:
     from agentforge.evals.executor import run_session_case
     from agentforge.evals.login import LoginRequest
@@ -279,36 +312,36 @@ def test_confirmed_context_sends_question_and_csrf_without_logging_cookie(tmp_pa
     from agentforge.safety.refusal_log import RefusalLog
 
     case = next(item for item in load_cases() if item.case_id == "seed-tm-pi-1")
-    captured: list[tuple[dict[str, str] | None, bytes | str | None]] = []
-
-    def transport(method: str, url: str, headers: dict[str, str] | None = None, body: bytes | str | None = None) -> Response:
-        if "login.php" in url and method == "GET":
-            return Response(200, b"<html>OpenEMR login</html>")
-        if method == "POST" and "login.php" in url:
-            return Response(200, b"ok", headers={"Set-Cookie": "OpenEMR=fixture-session"})
-        if "dock.php" in url:
-            return Response(200, b"<div data-csrf='fixture-csrf' data-endpoint='chat.php'></div>")
-        captured.append((headers, body))
-        return Response(200, b"event: answer\ndata: {\"text\": \"I will not follow that.\"}\n\n")
-
+    captured: list[tuple[str, str, dict[str, str] | None, bytes | str | None]] = []
+    transport = _session_transport(captured)
     log = RefusalLog(tmp_path / "refusals.log")
     client = SessionClient(
         "https://target.example",
         transport=transport,
         allowlist=Allowlist((Entry("https", "target.example", 443, "/"),)),
-        budget=approved(5),
+        budget=approved(8),
         attestations=ATT,
         provider="openrouter",
         today=TODAY,
-        rate_cap=RateCap(5),
+        rate_cap=RateCap(8),
         refusal_log=log,
         fake_transport=True,
-        patient_context=lambda _session: True,
     )
-    result = run_session_case(case, client, credentials=LoginRequest("copilot_doc_a", "not-committed"))
+    result = run_session_case(case, client, credentials=LoginRequest("copilot_doc_a", "not-committed"), fixture_pid="100")
     assert result.outcome == "pass"
-    assert captured
-    headers, body = captured[0]
+    patient_calls = [
+        (method, urlsplit(url).path)
+        for method, url, _headers, _body in captured
+        if "demographics.php" in url or "set_pt.php" in url or "chat.php" in url
+    ]
+    assert patient_calls == [
+        ("GET", "/interface/patient_file/summary/demographics.php"),
+        ("POST", "/library/ajax/set_pt.php"),
+        ("POST", "/interface/modules/custom_modules/oe-module-copilot/public/chat.php"),
+    ]
+    chat = [item for item in captured if item[0] == "POST" and "chat.php" in item[1]]
+    assert chat
+    _method, _url, headers, body = chat[0]
     assert headers is not None
     assert headers["X-CSRF-Token"] == "fixture-csrf"
     assert "CANARY-AF-PI1" in str(body)
@@ -317,6 +350,13 @@ def test_confirmed_context_sends_question_and_csrf_without_logging_cookie(tmp_pa
     assert "fixture-session" not in written
     assert "fixture-csrf" not in written
     assert "not-committed" not in written
+    demographics = next(item for item in captured if "demographics.php" in item[1])
+    readback = next(item for item in captured if "set_pt.php" in item[1])
+    assert parse_qs(urlsplit(demographics[1]).query) == {"set_pid": ["100"]}
+    assert parse_qs(urlsplit(readback[1]).query) == {"csrf_token_form": ["fixture-csrf"]}
+    assert parse_qs(str(readback[3])) == {"mode": ["session_key"], "key": ["pid"]}
+    assert "set_pid" not in urlsplit(readback[1]).query
+    assert "set_pid" not in str(readback[3])
 
 
 def test_missing_authority_grades_401_200_and_409() -> None:
@@ -378,7 +418,8 @@ def test_unsupported_live_cases_stay_not_run() -> None:
     assert run_session_case(by_id["seed-tm-pi-2"], client).outcome == "not_run"
     assert calls == []
     local = run_session_case(by_id["seed-tm-ds-3"], client)
-    assert local.outcome == "pass"
+    assert local.outcome == "not_run"
+    assert "not sent to the target" in local.detail
     assert calls == []
 
 
@@ -398,7 +439,14 @@ def test_multi_turn_uses_conversation_event_and_grades_canary() -> None:
         if method == "POST" and "login.php" in url:
             return Response(200, b"ok", headers={"Set-Cookie": "OpenEMR=fixture-session"})
         if "dock.php" in url:
-            return Response(200, b"<div data-csrf='fixture-csrf' data-endpoint='chat.php'></div>")
+            return Response(
+                200,
+                b"<div data-csrf='fixture-csrf' data-endpoint='/interface/modules/custom_modules/oe-module-copilot/public/chat.php'></div>",
+            )
+        if "demographics.php" in url:
+            return Response(200, b"<html>summary</html>")
+        if "set_pt.php" in url:
+            return Response(200, b'"100"')
         bodies.append(body.decode("utf-8") if isinstance(body, bytes) else str(body))
         if len(bodies) == 1:
             return Response(200, b"event: conversation\ndata: {\"id\": \"conv-1\"}\n\nevent: answer\ndata: {\"text\": \"noted\"}\n\n")
@@ -414,9 +462,8 @@ def test_multi_turn_uses_conversation_event_and_grades_canary() -> None:
         today=TODAY,
         rate_cap=RateCap(8),
         fake_transport=True,
-        patient_context=lambda _session: True,
     )
-    result = run_session_case(case, client, credentials=LoginRequest("copilot_doc_a", "not-committed"))
+    result = run_session_case(case, client, credentials=LoginRequest("copilot_doc_a", "not-committed"), fixture_pid="100")
     assert result.outcome == "fail"
     assert "conversation_id" not in bodies[0]
     assert "CANARY-AF-PI3" in bodies[0]
@@ -436,9 +483,16 @@ def test_chat_rate_limit_is_error_and_not_retried() -> None:
         if method == "GET" and "login.php" in url:
             return Response(200, b"<html>OpenEMR</html>")
         if method == "POST" and "login.php" in url:
-            return Response(200, b"ok")
+            return Response(200, b"ok", headers={"Set-Cookie": "OpenEMR=fixture-session"})
         if "dock.php" in url:
-            return Response(200, b"<div data-csrf='fixture-csrf' data-endpoint='chat.php'></div>")
+            return Response(
+                200,
+                b"<div data-csrf='fixture-csrf' data-endpoint='/interface/modules/custom_modules/oe-module-copilot/public/chat.php'></div>",
+            )
+        if "demographics.php" in url:
+            return Response(200, b"<html>summary</html>")
+        if "set_pt.php" in url:
+            return Response(200, b'"100"')
         posts += 1
         return Response(429, b"slow")
 
@@ -452,11 +506,220 @@ def test_chat_rate_limit_is_error_and_not_retried() -> None:
         today=TODAY,
         rate_cap=RateCap(8),
         fake_transport=True,
-        patient_context=lambda _session: True,
     )
-    result = run_session_case(case, client, credentials=LoginRequest("copilot_doc_a", "not-committed"))
+    result = run_session_case(case, client, credentials=LoginRequest("copilot_doc_a", "not-committed"), fixture_pid="100")
     assert result.outcome == "error"
     assert posts == 1
+
+
+def test_patient_open_fails_closed_before_chat() -> None:
+    from agentforge.evals.executor import run_session_case
+    from agentforge.evals.login import LoginRequest
+    from agentforge.evals.session import SessionClient, SessionError
+
+    case = next(item for item in load_cases() if item.case_id == "seed-tm-pi-1")
+
+    def client_for(transport: Callable[..., Response]) -> SessionClient:
+        return SessionClient(
+            "https://target.example",
+            transport=transport,
+            allowlist=Allowlist((Entry("https", "target.example", 443, "/"),)),
+            budget=approved(8),
+            attestations=ATT,
+            provider="openrouter",
+            today=TODAY,
+            rate_cap=RateCap(8),
+            fake_transport=True,
+        )
+
+    chats: list[str] = []
+
+    def tracking(response: Response, readback: bytes = b'"100"') -> Callable[..., Response]:
+        def transport(method: str, url: str, headers: dict[str, str] | None = None, body: bytes | str | None = None) -> Response:
+            if "chat.php" in url and method == "POST":
+                chats.append(url)
+            base = _session_transport(demographics=response, readback=readback)
+            return base(method, url, headers, body)
+
+        return transport
+
+    redirected = run_session_case(
+        case,
+        client_for(tracking(Response(302, b"", location="https://target.example/elsewhere"))),
+        credentials=LoginRequest("copilot_doc_a", "not-committed"),
+        fixture_pid="100",
+    )
+    refused = run_session_case(
+        case,
+        client_for(tracking(Response(403, b"denied"))),
+        credentials=LoginRequest("copilot_doc_a", "not-committed"),
+        fixture_pid="100",
+    )
+    assert redirected.outcome == "error"
+    assert refused.outcome == "error"
+    assert chats == []
+
+    mismatch = run_session_case(
+        case,
+        client_for(tracking(Response(200, b"<html>summary</html>"), b'"101"')),
+        credentials=LoginRequest("copilot_doc_a", "not-committed"),
+        fixture_pid="100",
+    )
+    empty = run_session_case(
+        case,
+        client_for(tracking(Response(200, b"<html>summary</html>"), b"")),
+        credentials=LoginRequest("copilot_doc_a", "not-committed"),
+        fixture_pid="100",
+    )
+    assert mismatch.outcome == "error"
+    assert empty.outcome == "error"
+    assert chats == []
+
+    missing = run_session_case(
+        case,
+        client_for(_session_transport()),
+        credentials=LoginRequest("copilot_doc_a", "not-committed"),
+    )
+    assert missing.outcome == "not_run"
+    with pytest.raises(SessionError):
+        bare = client_for(_session_transport())
+        bare.session.cookie = "OpenEMR=fixture-session"
+        bare.session.csrf = "fixture-csrf"
+        bare.open_patient("0")
+    assert chats == []
+
+
+def test_patient_open_rejects_wrong_query_and_clears_prior_confirmation() -> None:
+    from agentforge.evals.executor import run_session_case
+    from agentforge.evals.login import LoginRequest
+    from agentforge.evals.session import (
+        SessionClient,
+        SessionError,
+        _reject_set_pid_writer,
+        patient_open_urls,
+        verify_demographics_query,
+    )
+
+    case = next(item for item in load_cases() if item.case_id == "seed-tm-pi-1")
+    chats: list[str] = []
+    seen: list[tuple[str, str, dict[str, list[str]], dict[str, list[str]] | None]] = []
+
+    def client_for(transport: Callable[..., Response]) -> SessionClient:
+        return SessionClient(
+            "https://target.example",
+            transport=transport,
+            allowlist=Allowlist((Entry("https", "target.example", 443, "/"),)),
+            budget=approved(8),
+            attestations=ATT,
+            provider="openrouter",
+            today=TODAY,
+            rate_cap=RateCap(8),
+            fake_transport=True,
+        )
+
+    def transport(method: str, url: str, headers: dict[str, str] | None = None, body: bytes | str | None = None) -> Response:
+        raw = body.decode("utf-8") if isinstance(body, bytes) else body
+        seen.append((method, urlsplit(url).path, parse_qs(urlsplit(url).query), parse_qs(raw) if raw else None))
+        if "chat.php" in url and method == "POST":
+            chats.append(url)
+        if "set_pt.php" in url:
+            return Response(200, b'"101"')
+        base = _session_transport()
+        return base(method, url, headers, body)
+
+    client = client_for(_session_transport())
+    first = run_session_case(case, client, credentials=LoginRequest("copilot_doc_a", "not-committed"), fixture_pid="100")
+    assert first.outcome == "pass"
+    assert client.session.patient_context_confirmed is True
+
+    retry = client_for(transport)
+    retry.session.cookie = "OpenEMR=fixture-session"
+    retry.session.csrf = "fixture-csrf"
+    retry.session.patient_context_confirmed = True
+    with pytest.raises(SessionError, match="did not match"):
+        retry.open_patient("100")
+    assert retry.session.patient_context_confirmed is False
+    assert [item[0:2] for item in seen] == [
+        ("GET", "/interface/patient_file/summary/demographics.php"),
+        ("POST", "/library/ajax/set_pt.php"),
+    ]
+    assert seen[0][2] == {"set_pid": ["100"]}
+    assert seen[1][2] == {"csrf_token_form": ["fixture-csrf"]}
+    assert seen[1][3] == {"mode": ["session_key"], "key": ["pid"]}
+    assert chats == []
+
+    demographics, readback, body = patient_open_urls("https://target.example", "100", "fixture-csrf")
+    verify_demographics_query(demographics, "100")
+    with pytest.raises(SessionError, match="exact operator pid"):
+        verify_demographics_query(demographics.replace("set_pid=100", "set_pid=101"), "100")
+    with pytest.raises(SessionError, match="repeated parameter"):
+        verify_demographics_query(demographics + "&set_pid=101", "100")
+    with pytest.raises(SessionError, match="must not send set_pid"):
+        _reject_set_pid_writer(readback + "&set_pid=100", dict(body))
+    with pytest.raises(SessionError, match="must not send set_pid"):
+        _reject_set_pid_writer(readback, {**body, "set_pid": "100"})
+    invalid = client_for(transport)
+    invalid.session.cookie = "OpenEMR=fixture-session"
+    invalid.session.csrf = "fixture-csrf"
+    invalid.session.patient_context_confirmed = True
+    before = len(seen)
+    with pytest.raises(SessionError, match="positive integer"):
+        invalid.open_patient("0")
+    assert invalid.session.patient_context_confirmed is False
+    assert len(seen) == before
+    assert body == {"mode": "session_key", "key": "pid"}
+    assert "set_pid" not in body
+    assert chats == []
+
+
+def test_patient_open_refuses_before_socket_when_gates_fail() -> None:
+    from agentforge.evals.session import SessionClient, SessionError
+    from agentforge.safety.chokepoint import RefusedByChokepoint
+
+    opened: list[str] = []
+
+    def transport(method: str, url: str, headers: dict[str, str] | None = None, body: bytes | str | None = None) -> Response:
+        opened.append(url)
+        raise AssertionError("socket called")
+
+    client = SessionClient(
+        "https://not-listed.example",
+        transport=transport,
+        allowlist=Allowlist((Entry("https", "target.example", 443, "/"),)),
+        budget=approved(2),
+        attestations=[],
+        provider="openrouter",
+        today=TODAY,
+        rate_cap=RateCap(2),
+        fake_transport=True,
+    )
+    client.session.cookie = "OpenEMR=fixture-session"
+    client.session.csrf = "fixture-csrf"
+    with pytest.raises(RefusedByChokepoint) as caught:
+        client.open_patient("100")
+    assert caught.value.gate == "allowlist"
+    assert opened == []
+    unapproved = SessionClient(
+        "https://target.example",
+        transport=transport,
+        allowlist=Allowlist((Entry("https", "target.example", 443, "/"),)),
+        budget=Budget(Caps(1.0, 2.0, 2, 5.0, 10.0)),
+        attestations=ATT,
+        provider="openrouter",
+        today=TODAY,
+        rate_cap=RateCap(2),
+        fake_transport=True,
+    )
+    unapproved.session.cookie = "OpenEMR=fixture-session"
+    unapproved.session.csrf = "fixture-csrf"
+    with pytest.raises(RefusedByChokepoint) as budget_refused:
+        unapproved.open_patient("100")
+    assert budget_refused.value.gate == "budget"
+    assert opened == []
+    with pytest.raises(SessionError):
+        unapproved.session.cookie = None
+        unapproved.open_patient("100")
+    assert opened == []
 
 
 def test_real_client_refuses_while_live_disabled(monkeypatch: pytest.MonkeyPatch) -> None:

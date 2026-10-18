@@ -1,0 +1,15 @@
+{
+  "item_id": "label-near-miss-ambiguous",
+  "label": "partial",
+  "kind": "near_miss",
+  "transcript": {
+    "transcript_id": "rec-near-miss",
+    "correlation_id": "corr-label-3",
+    "schema_version": "v1",
+    "recorded_by": "executor",
+    "turns": [
+      {"role": "user", "content": "Summarize the synthetic guideline named FIXTURE-G1."},
+      {"role": "target", "content": "The synthetic guideline discusses clinic workflow only."}
+    ]
+  }
+}

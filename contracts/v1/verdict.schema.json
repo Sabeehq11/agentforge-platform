@@ -28,6 +28,7 @@
       "maxItems": 16,
       "items": { "type": "string", "minLength": 1, "maxLength": 200 }
     },
-    "become_regression_case": { "type": "boolean" }
+    "become_regression_case": { "type": "boolean" },
+    "needs_human_review": { "type": "boolean" }
   }
 }

@@ -1,0 +1,7 @@
+{
+  "precision": 1.0,
+  "recall": 1.0,
+  "false_positive_rate": 0.0,
+  "labeled": 4,
+  "source": "stub and deterministic rules on evals/judge/labeled. Not a live or paid run."
+}

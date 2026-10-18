@@ -48,10 +48,10 @@ def main() -> int:
     budget.approve(approval_token(caps, "suite-check-not-a-credential"), "suite-check-not-a-credential")
     graded = {item.case_id: item for item in run_dry(cases, budget=budget)}
     cap_case = next(case for case in cases if case.grader == "attack_count")
-    if graded[cap_case.case_id].outcome != "pass":
-        problems.append("attack-count local grader did not pass")
+    if graded[cap_case.case_id].outcome != "not_run":
+        problems.append("attack-count local cap stop was graded")
     for case in cases:
-        if case.grader != "attack_count" and graded[case.case_id].outcome != "not_run":
+        if graded[case.case_id].outcome != "not_run":
             problems.append(f"{case.case_id} dry-run was not not_run")
     if problems:
         print("FAIL")
