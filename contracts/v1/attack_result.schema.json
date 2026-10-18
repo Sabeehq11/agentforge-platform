@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentforge.local/contracts/v1/attack_result.schema.json",
+  "title": "AttackResult",
+  "description": "Red Team to Judge. The input sequence is structured turns, not a free blob. The executor is not a party to this message.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "message_id",
+    "correlation_id",
+    "schema_version",
+    "produced_at",
+    "category",
+    "subcategory",
+    "input_sequence",
+    "expected_safe_behavior",
+    "observed_behavior",
+    "severity",
+    "exploitability",
+    "regression_flag"
+  ],
+  "properties": {
+    "message_id": { "$ref": "defs.schema.json#/$defs/envelope/properties/message_id" },
+    "correlation_id": { "$ref": "defs.schema.json#/$defs/envelope/properties/correlation_id" },
+    "schema_version": { "$ref": "defs.schema.json#/$defs/envelope/properties/schema_version" },
+    "produced_at": { "$ref": "defs.schema.json#/$defs/envelope/properties/produced_at" },
+    "category": { "$ref": "defs.schema.json#/$defs/category" },
+    "subcategory": { "$ref": "defs.schema.json#/$defs/subcategory" },
+    "input_sequence": { "$ref": "defs.schema.json#/$defs/input_sequence" },
+    "expected_safe_behavior": { "type": "string", "minLength": 1, "maxLength": 2000 },
+    "observed_behavior": { "$ref": "defs.schema.json#/$defs/observed" },
+    "severity": { "$ref": "defs.schema.json#/$defs/severity" },
+    "exploitability": { "type": "string", "enum": ["low", "moderate", "high"] },
+    "regression_flag": { "type": "boolean" }
+  }
+}

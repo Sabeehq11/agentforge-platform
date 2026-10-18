@@ -102,7 +102,7 @@ Each question lists the options, what it blocks, and who or what answers it. Non
 ### Q12. Exploit store and queue technology
 - **Question:** SQLite or a server database? Is a queue needed?
 - **Candidate:** SQLite, because the Week 2 agent already uses it and it adds no infrastructure.
-- **Resolved by:** P2 ADR.
+- **Resolved by:** ADR-005 (SQLite, no queue). P2 builds the schema on that decision and does not reopen it.
 
 ### Q13. Provider-side spending limits
 - **Question:** Can a hard spending limit be set on each provider key?
@@ -139,8 +139,10 @@ ADRs live in [adr/](adr/README.md): 001 repo strategy, 002 target access, 003 co
 
 ## 5. Interface changes log
 
-Every change to an inter-agent message schema is recorded here and in its migration note (PRD requirement).
-No schemas exist yet.
+Every change to an inter-agent message schema or the store schema is recorded here and in its migration note
+(PRD requirement). The note lives in [migrations/](migrations/).
 
 | Date | Schema | Version change | Breaking? | Migration note |
 |---|---|---|---|---|
+| 2026-10-17 | Message schemas: CampaignRequest, AttackResult, Verdict, ConfirmedExploit, five error schemas | none to v1 | no | [0001](migrations/0001-initial-schema.md). First publication, in `contracts/v1/` |
+| 2026-10-17 | Store schema: exploits, regression cases, run logs, coverage metrics | none to 0001 | no | [0001](migrations/0001-initial-schema.md) |

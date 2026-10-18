@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentforge.local/contracts/v1/campaign_request.schema.json",
+  "title": "CampaignRequest",
+  "description": "Orchestrator to Red Team. A campaign order, not an attack. No payload body.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "message_id",
+    "correlation_id",
+    "schema_version",
+    "produced_at",
+    "target_pin",
+    "category",
+    "surface",
+    "per_run_usd_cap",
+    "attack_count_cap",
+    "approval_token_ref"
+  ],
+  "properties": {
+    "message_id": { "$ref": "defs.schema.json#/$defs/envelope/properties/message_id" },
+    "correlation_id": { "$ref": "defs.schema.json#/$defs/envelope/properties/correlation_id" },
+    "schema_version": { "$ref": "defs.schema.json#/$defs/envelope/properties/schema_version" },
+    "produced_at": { "$ref": "defs.schema.json#/$defs/envelope/properties/produced_at" },
+    "target_pin": { "type": "string", "minLength": 7, "maxLength": 40, "pattern": "^[0-9a-f]+$" },
+    "category": { "$ref": "defs.schema.json#/$defs/category" },
+    "surface": { "type": "string", "minLength": 1, "maxLength": 120 },
+    "per_run_usd_cap": { "type": "number", "exclusiveMinimum": 0, "maximum": 1000 },
+    "attack_count_cap": { "type": "integer", "minimum": 1, "maximum": 100 },
+    "approval_token_ref": { "type": "string", "minLength": 1, "maxLength": 128 }
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentforge.local/contracts/v1/errors/judge_timeout.schema.json",
+  "title": "JudgeTimeout",
+  "description": "The Judge did not return a verdict inside its time bound. No verdict is implied.",
+  "allOf": [{ "$ref": "error_envelope.schema.json" }],
+  "properties": { "error_code": { "const": "judge_timeout" } },
+  "unevaluatedProperties": false
+}

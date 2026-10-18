@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentforge.local/contracts/v1/defs.schema.json",
+  "title": "Shared contract definitions",
+  "description": "Referenced by the v1 message and error schemas. Category ids are the threat-model ids, not a second taxonomy.",
+  "$defs": {
+    "envelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["message_id", "correlation_id", "schema_version", "produced_at"],
+      "properties": {
+        "message_id": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "correlation_id": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "schema_version": { "type": "string", "const": "v1" },
+        "produced_at": { "type": "string", "format": "date-time" }
+      }
+    },
+    "category": {
+      "type": "string",
+      "enum": ["TM-PI", "TM-EX", "TM-SC", "TM-TM", "TM-DS", "TM-ID"]
+    },
+    "subcategory": {
+      "type": "string",
+      "enum": [
+        "TM-PI-1", "TM-PI-2", "TM-PI-3",
+        "TM-EX-1", "TM-EX-2", "TM-EX-3",
+        "TM-SC-1", "TM-SC-2", "TM-SC-3",
+        "TM-TM-1", "TM-TM-2", "TM-TM-3",
+        "TM-DS-1", "TM-DS-2", "TM-DS-3", "TM-DS-4",
+        "TM-ID-1", "TM-ID-2", "TM-ID-3"
+      ]
+    },
+    "severity": {
+      "type": "string",
+      "enum": ["critical", "high", "medium", "low"]
+    },
+    "observed": {
+      "type": "string",
+      "enum": ["pass", "fail", "partial"]
+    },
+    "turn": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["role", "content"],
+      "properties": {
+        "role": { "type": "string", "enum": ["user", "target"] },
+        "content": { "type": "string", "minLength": 1, "maxLength": 8000 }
+      }
+    },
+    "input_sequence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["turns", "channel"],
+      "properties": {
+        "channel": { "type": "string", "enum": ["chat", "upload"] },
+        "turns": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "items": { "$ref": "#/$defs/turn" }
+        }
+      }
+    }
+  }
+}

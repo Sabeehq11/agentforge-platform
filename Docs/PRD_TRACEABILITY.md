@@ -30,7 +30,7 @@ and is not a P1 miss.
 |---|---|---|---|
 | G-1 | P0, every later checkpoint | No deployed URL is recorded or submitted. PRD hard gate. | Flagged. Needs the operator to supply the current URL and a decision on Q2. Not invented here |
 | G-2 | P0 | Build-versus-configure tool claims are marked unverified. The PRD asks what each tool covers and where it falls short | Flagged. Checking the claims means reading each vendor's docs, which is a separate approved step, not a small edit |
-| G-3 | P0 | Evidence packet message schemas are names, not JSON Schemas | Not a gap. The roadmap assigns the schema list to P0 and the schemas to P2 |
+| G-3 | P0 | Evidence packet message schemas are names, not JSON Schemas | Not a gap. Resolved at P2: the schemas are in `contracts/v1/`. Kept so the P0 finding stays visible |
 | G-4 | P0 | Off-list refusals are raised, not logged. ROADMAP 2.2 says refused and logged | Not a P0 miss. Logging is part of the envelope that must exist before the first live run, so it is P3. No logging code added |
 | G-5 | P0 | CODEOWNERS has no effect until branch protection requires it. That setting is not confirmed | Flagged. A repository setting, not a code change |
 | G-6 | P1 | None found against the P1 requirements | No P1 code or doc fix was needed. Closure audit 2026-10-17 agrees |
@@ -70,6 +70,36 @@ unconfirmed; both still name a checkpoint.
 **P1 is ready to commit, with the conditions in [PROGRESS.md](PROGRESS.md).** It is not committed here. GitHub
 Actions has not run on these files.
 
+## P2 closure audit (2026-10-17)
+
+Re-read the original Week 3 PRD (`Week_3_AgentForge_Updated.docx.pdf`, pages 11–12), [ROADMAP.md](ROADMAP.md) section 4
+P2, and this matrix. No requirement was added or moved. No P3–P11 row was implemented or marked met.
+
+**P2-owned requirements are met.** C-1, C-2, C-3, C-4, C-5, D-6 and D-9. The four v1 message schemas and the five
+typed error schemas are in `contracts/v1/`. Producer and consumer tests, the nested rejection tests and the schema-diff
+check are recorded in [PROGRESS.md](PROGRESS.md). The migration note is [migrations/0001-initial-schema.md](migrations/0001-initial-schema.md),
+and the log row is in [DECISIONS.md](DECISIONS.md) section 5.
+
+**Three shared rows stay partial, and that is the planned split.** D-1's P2 data model is complete (`schema.sql`,
+indexes, `schema_migrations`); the store agents write is P7. D-7 has the unique id, required fields and sequence-hash
+constraint; Documentation-agent enforcement is P7. D-8 has the design record and the insert path refuses `published`;
+role-scoped enforcement is P9.
+
+**P0 and P1 findings are not closed by P2.** G-1, G-2, G-4, G-5 and G-6 stand as written. G-3 is resolved: the packet
+now points at `contracts/v1/` instead of names only. The row is kept, not deleted. S-1, E-2 and E-6 are unchanged.
+
+**Six P2 manual checks, all recorded in [PROGRESS.md](PROGRESS.md):**
+
+1. Nested validation: 16 tests passed in `tests/test_contracts_nested.py`.
+2. An unversioned breaking schema change was rejected with exit 1.
+3. A fixture migration kept the inserted exploit and filled the new column.
+4. A duplicate sequence raised `DuplicateSequence`. A missing required field raised `IncompleteRecord`. Neither was a
+   raw `sqlite3` error.
+5. No HTTP client, model SDK or socket import under `src/agentforge/agents/`, `store/` or `contracts/`.
+6. The local CI command set passed: 145 tests, 95.79% coverage. GitHub Actions has not run on these files.
+
+**All 69 requirement rows still have a checkpoint owner.** None was moved.
+
 ## Hard gates
 
 | Id | PRD requirement | Checkpoint | Status | Evidence |
@@ -89,7 +119,7 @@ Actions has not run on these files.
 | S-3 | Platform-side threats (a target response or a transcript steering the Judge or Documentation agent) | P1 | met | `TM-PL-1`, `TM-PL-2` |
 | S-4 | `USERS.md`: users, workflows, use cases, why automation | P1 | met | [USERS.md](../USERS.md). Due checkpoint unconfirmed (Q5); written at P1 anyway |
 | S-5 | Build-versus-configure record before any agent: Burp, ZAP, Semgrep, Garak, commercial platforms, and why custom code is or is not justified | P0 | partial | [BUILD_VS_CONFIGURE.md](BUILD_VS_CONFIGURE.md) covers each named tool plus promptfoo, PyRIT and deterministic tooling. Claims are unverified. G-2 |
-| S-6 | Architecture Defense evidence packet: diagram, message schemas, trust boundaries, failure modes | P0 | met as a draft | [DEFENSE_PACKET.md](DEFENSE_PACKET.md). Schemas are names; JSON Schemas are P2 (G-3) |
+| S-6 | Architecture Defense evidence packet: diagram, message schemas, trust boundaries, failure modes | P0 | met as a draft | [DEFENSE_PACKET.md](DEFENSE_PACKET.md). JSON Schemas now published at `contracts/v1/` (G-3 resolved, row kept). The packet is still a draft, not `ARCHITECTURE.md` |
 | S-7 | Independent code repo, setup guide, deployed link, run instructions | P0 layout, P5 guide | partial | ADR-001. README has setup for what exists. Deployed link is G-1. Run-against-target instructions are P5, because there is nothing to run yet |
 
 ## Multi-agent system
@@ -113,15 +143,15 @@ Actions has not run on these files.
 
 | Id | PRD requirement | Checkpoint | Status | Evidence |
 |---|---|---|---|---|
-| D-1 | Versioned, queryable exploit store | P2 model, P7 store | not started | SQLite is the decision (ADR-005), not the schema |
+| D-1 | Versioned, queryable exploit store | P2 model, P7 store | partial | P2 model complete: [schema.sql](../src/agentforge/store/schema.sql), indexes, `schema_migrations`. No agent writes it. P7 store not started |
 | D-2 | Full suite runs when the Orchestrator triggers it | P7 | not started | |
 | D-3 | Detect a fixed vulnerability reappearing, and a fix in one category regressing another | P7 | not started | |
 | D-4 | A passing regression means fixed, not drifted: repeat runs, assert on side effects | P7 | not started | |
 | D-5 | Answers to all six observability questions, queryable, and readable by the Orchestrator | P8 | not started | ADR-006 chooses SQLite traces. No trace store exists |
-| D-6 | Data model for exploits, regression cases, run logs, coverage metrics | P2 | not started | |
-| D-7 | Data quality: unique id, required fields, no duplicate attack sequence | P2 constraints, P7 enforcement | not started | |
-| D-8 | Access control: who writes exploits, who reads, what approval precedes publication | P2 design, P9 enforcement | not started | |
-| D-9 | Migration of existing records without data loss, with a migration note per schema change | P2 | not started | |
+| D-6 | Data model for exploits, regression cases, run logs, coverage metrics | P2 | met | [schema.sql](../src/agentforge/store/schema.sql): all four tables. Closure audit 2026-10-17 |
+| D-7 | Data quality: unique id, required fields, no duplicate attack sequence | P2 constraints, P7 enforcement | partial | P2 constraints met: unique id, required fields, unique `sequence_hash`. `tests/test_store.py` raises `DuplicateSequence` and `IncompleteRecord`. Documentation-agent enforcement is P7 |
+| D-8 | Access control: who writes exploits, who reads, what approval precedes publication | P2 design, P9 enforcement | partial | P2 design met: [ACCESS_CONTROL.md](ACCESS_CONTROL.md). Insert refuses `published` (`test_published_insert_is_rejected`). Role-scoped enforcement is P9 |
+| D-9 | Migration of existing records without data loss, with a migration note per schema change | P2 | met | [migrate.py](../src/agentforge/store/migrate.py) refuses a missing note. Manual check: original row unchanged, new column populated. Note: [0001-initial-schema.md](migrations/0001-initial-schema.md) |
 | D-10 | SQL indexes on severity, category and system version, and a regression SLO verified in CI | P8 | not started | Applies, because ADR-005 chose SQLite. Q7 |
 | D-11 | Queue depth and backup behavior | P6, only if a queue is used | not started | ADR-003 rejected a queue. The requirement does not apply unless that decision changes. Q7 |
 | D-12 | Baseline CPU, memory, latency and throughput for 100 cases plus the full regression suite | P8 | not started | |
@@ -131,11 +161,11 @@ Actions has not run on these files.
 
 | Id | PRD requirement | Checkpoint | Status | Evidence |
 |---|---|---|---|---|
-| C-1 | Versioned schemas (minimum v1) for Orchestrator to Red Team, Red Team to Judge, Judge to Documentation, Judge to harness | P2 | not started | Names only, in [DEFENSE_PACKET.md](DEFENSE_PACKET.md) |
-| C-2 | Schemas published in `/contracts`. JSON Schema or equivalent | P2 | not started | |
-| C-3 | Producer-side and consumer-side contract tests. A breaking change fails without a version bump | P2 | not started | |
-| C-4 | Typed error schemas: target unreachable, budget exceeded, judge timeout, no findings in window, regression detected | P2 | not started | Names only |
-| C-5 | A migration note for every interface change | P2 | not started | The log exists and is empty: [DECISIONS.md](DECISIONS.md) section 5 |
+| C-1 | Versioned schemas (minimum v1) for Orchestrator to Red Team, Red Team to Judge, Judge to Documentation, Judge to harness | P2 | met | `contracts/v1/campaign_request.schema.json`, `attack_result.schema.json`, `confirmed_exploit.schema.json`, `verdict.schema.json`. Each `schema_version` is `v1` |
+| C-2 | Schemas published in `/contracts`. JSON Schema or equivalent | P2 | met | `contracts/v1/`, Draft 2020-12, including `defs.schema.json` and `errors/` |
+| C-3 | Producer-side and consumer-side contract tests. A breaking change fails without a version bump | P2 | met | `tests/test_contracts.py`, `tests/test_contracts_nested.py` (16 passed), `tests/test_schema_diff.py`. Manual schema-diff check exited 1. CI step in `.github/workflows/ci.yml` |
+| C-4 | Typed error schemas: target unreachable, budget exceeded, judge timeout, no findings in window, regression detected | P2 | met | Five schemas in `contracts/v1/errors/`. `test_each_error_validates_against_its_own_schema`, `test_unknown_error_code_is_rejected` |
+| C-5 | A migration note for every interface change | P2 | met | [DECISIONS.md](DECISIONS.md) section 5, both rows. Note: [0001-initial-schema.md](migrations/0001-initial-schema.md). `test_a_migration_without_a_note_is_refused` |
 | C-6 | Rate limits and auth documented for every external API, with backoff, queue or abort | P5 | not started | Target limiter is described in the threat model. Platform behavior is not documented as a spec yet |
 | C-7 | Pagination documented | P5 | unconfirmed | None of the planned APIs are paged. Confirm at P5 and mark not applicable if it stays that way, rather than inventing pages |
 

@@ -12,7 +12,7 @@ Status values: `not started`, `in progress`, `blocked`, `done`.
 
 | Milestone | Due (PRD) | Checkpoints | Status |
 |---|---|---|---|
-| Architecture Defense | 4 hours after kickoff | P0, drafts of P1 and P2 | P0 done (reachability deferred to P3), P1 done, P2 not started |
+| Architecture Defense | 4 hours after kickoff | P0, drafts of P1 and P2 | P0 done (reachability deferred to P3), P1 done, P2 done |
 | MVP | Tuesday 11:59 PM | P0 to P5 | not started |
 | Final | Friday noon | P6 to P11 | not started |
 
@@ -34,7 +34,7 @@ The kickoff time is not recorded in the repo, so the Architecture Defense deadli
 ## PRD traceability
 
 The full requirement-to-checkpoint matrix, with status and evidence, is [PRD_TRACEABILITY.md](PRD_TRACEABILITY.md).
-The audit of P0 and P1 is in that file, including the P1 closure audit. Two gaps are flagged and not fixed here,
+The audit of P0, P1 and P2 is in that file, including the P1 and P2 closure audits. Two gaps are flagged and not fixed here,
 because neither is a small edit: no deployed URL is recorded (G-1, Q2), and the build-versus-configure tool claims
 are unverified (G-2).
 
@@ -47,7 +47,7 @@ are unverified (G-2).
 | `THREAT_MODEL.md` | MVP | done for P1 | Written at repo root. Defenses are by code reading, not tested |
 | `USERS.md` | MVP **(unconfirmed)** | done for P1 | Written at repo root. Checkpoint unconfirmed (Q5) |
 | `ARCHITECTURE.md` | MVP | not started | P5 |
-| `/contracts` | MVP first version | not started | P2 |
+| `/contracts` | MVP first version | done for P2 | v1 schemas in `contracts/v1/`. Full coverage of both sides is Final |
 | `evals/` with 3+ categories of results | MVP | not started | P3 |
 | One agent live against the target | MVP | not started | P4 |
 | Vulnerability reports (3 minimum) | Final, MVP unconfirmed (Q5) | not started | P7 |
@@ -165,17 +165,24 @@ are unverified (G-2).
     E-6. The P0 progress edit is in its own commit. GitHub Actions stays UNVERIFIED until this commit is pushed and CI runs.
 
 ### P2. Contracts and data model
-- Status: not started. Depends on: P1.
-- [ ] v1 schemas for four messages in `/contracts`
-- [ ] Typed error schemas for five failure modes
-- [ ] Migration-note convention
-- [ ] Data model, constraints, indexes, migration tool, access control
-- [ ] Verify: producer and consumer contract tests
-- [ ] Verify: unbumped breaking change fails
-- [ ] Verify: migration keeps data
-- [ ] Verify: duplicate and incomplete inserts rejected
-- [ ] CI: contract tests, schema diff, migration tests
-- Evidence:
+- Status: done. Depends on: P1. No agent is implemented. D-1 stays partial until the P7 store. D-7 and D-8 stay partial until P7 and P9 enforcement.
+- [x] v1 schemas for four messages in `/contracts`
+- [x] Typed error schemas for five failure modes
+- [x] Migration-note convention
+- [x] Data model, constraints, indexes, migration tool, access control
+- [x] Verify: producer and consumer contract tests
+- [x] Verify: unbumped breaking change fails
+- [x] Verify: migration keeps data
+- [x] Verify: duplicate and incomplete inserts rejected
+- [x] CI: contract tests, schema diff, migration tests
+- Evidence, 2026-10-17, Python 3.12.15 at `/private/tmp/p2pin/bin/python`. No request to the target, no model call, no spend:
+  - Nested contract tests: `pytest tests/test_contracts_nested.py` — 16 passed. Missing required field, wrong type, invalid enum and extra property, each inside a nested object and an array item.
+  - Unversioned breaking change: a temporary git repo whose v1 schema dropped a required field. `scripts/check_schema_diff.py` printed `BREAKING` and exited 1. The temporary repo was outside this tree. No tracked file was edited.
+  - Migration: a temporary SQLite file, one exploit inserted through `insert_exploit`, then fixture migration `0002` applied through `migrate`. The original nine columns were unchanged and the new column was `unspecified`.
+  - Duplicate and incomplete inserts, on a temporary database: `DuplicateSequence: an exploit with this attack sequence already exists` and `IncompleteRecord: missing required field: reproduction_steps`. Neither was a `sqlite3.Error`. The exploits table still held one row.
+  - Source scan of `src/agentforge/agents/`, `src/agentforge/store/` and `src/agentforge/contracts/`: no `httpx`, `openai`, `anthropic`, `socket`, `urllib` or `requests` import.
+  - Local CI command set: ruff clean, mypy clean, `pytest --cov=agentforge --cov-fail-under=85` 145 passed at 95.79% coverage, Bandit clean, secret scan, link check, ADR check, threat-model check, workflow guard and schema diff. Schema diff exits 0 while `contracts/v1` has no committed baseline, which is what the script says when there is nothing to compare. GitHub Actions has not run on these files: **UNVERIFIED** until the user pushes.
+  - Closure audit, 2026-10-17, against the original Week 3 PRD (pages 11–12), [ROADMAP.md](ROADMAP.md) section 4 P2 and [PRD_TRACEABILITY.md](PRD_TRACEABILITY.md). C-1 to C-5, D-6 and D-9 met. D-1's P2 model is complete; the row stays partial until P7. D-7 and D-8 stay partial. No later-checkpoint row was implemented or marked met. G-1 to G-6 remain. G-3 is resolved by `contracts/v1/` and is not deleted. Nothing committed or pushed.
 
 ### P3. Seed attack suite and deterministic executor
 - Status: not started. Depends on: P2, safety envelope.
@@ -300,3 +307,4 @@ Record every paid call. The PRD asks for actual development spend.
 | 2026-10-17 | PRD traceability matrix written at `Docs/PRD_TRACEABILITY.md`. P0 and P1 audited against it. No requirement fix was small enough to make: the deployed URL (G-1) and the unverified tool claims (G-2) are flagged. Nothing committed or pushed. |
 | 2026-10-17 | OWASP names in THREAT_MODEL.md checked against the official 2021 Web and 2023 v1.1 LLM pages. Both match; one hyphenation corrected (A10); UNVERIFIED labels removed and the source links recorded. Two CareTeam authorization weaknesses from the P1 code review recorded as P3 candidates. No model or target call. Nothing committed or pushed. |
 | 2026-10-17 | P1 closure audit against the original 17-page PRD, the roadmap and `Docs/PRD_TRACEABILITY.md`. P1-owned requirements met. Three manual checks recorded. All 69 requirement rows have a checkpoint owner. G-1 and G-2 remain unresolved, with S-1, G-5 and E-6. P1 judged ready to commit. No model or target call. |
+| 2026-10-17 | P2 closure audit recorded. C-1 to C-5, D-6 and D-9 met. D-1, D-7 and D-8 stay partial. Six manual checks recorded: 16 nested tests passed, schema diff exit 1, migration preserved its row, typed insert errors, no network client in the new packages, 145 tests at 95.79% coverage. G-1 to G-6 unchanged. G-3 resolved, not deleted. Nothing committed or pushed. |

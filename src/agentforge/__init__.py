@@ -1,3 +1,3 @@
-"""AgentForge adversarial platform. P0: safety skeleton only. No network code lives in this package."""
+"""AgentForge adversarial platform. P2: safety skeleton, contracts and the data model. No network code."""
 
 __version__ = "0.0.1"

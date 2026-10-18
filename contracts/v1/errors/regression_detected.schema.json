@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentforge.local/contracts/v1/errors/regression_detected.schema.json",
+  "title": "RegressionDetected",
+  "description": "A previously fixed case failed again, or a fix in one category regressed another. Detection only. No runner.",
+  "allOf": [{ "$ref": "error_envelope.schema.json" }],
+  "properties": { "error_code": { "const": "regression_detected" } },
+  "unevaluatedProperties": false
+}

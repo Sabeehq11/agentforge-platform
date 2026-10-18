@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentforge.local/contracts/v1/verdict.schema.json",
+  "title": "Verdict",
+  "description": "Judge to regression harness. The Judge does not carry the attacker's claim of success.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "message_id",
+    "correlation_id",
+    "schema_version",
+    "produced_at",
+    "verdict",
+    "severity",
+    "evidence_refs",
+    "become_regression_case"
+  ],
+  "properties": {
+    "message_id": { "$ref": "defs.schema.json#/$defs/envelope/properties/message_id" },
+    "correlation_id": { "$ref": "defs.schema.json#/$defs/envelope/properties/correlation_id" },
+    "schema_version": { "$ref": "defs.schema.json#/$defs/envelope/properties/schema_version" },
+    "produced_at": { "$ref": "defs.schema.json#/$defs/envelope/properties/produced_at" },
+    "verdict": { "$ref": "defs.schema.json#/$defs/observed" },
+    "severity": { "$ref": "defs.schema.json#/$defs/severity" },
+    "evidence_refs": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 16,
+      "items": { "type": "string", "minLength": 1, "maxLength": 200 }
+    },
+    "become_regression_case": { "type": "boolean" }
+  }
+}

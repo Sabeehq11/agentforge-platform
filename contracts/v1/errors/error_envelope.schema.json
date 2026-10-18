@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentforge.local/contracts/v1/errors/error_envelope.schema.json",
+  "title": "ErrorEnvelope",
+  "description": "Shared fields for the five PRD failure modes. Each error schema extends this and sets its own error_code.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["error_code", "correlation_id", "schema_version", "retryable"],
+  "properties": {
+    "error_code": {
+      "type": "string",
+      "enum": [
+        "target_unreachable",
+        "budget_exceeded",
+        "judge_timeout",
+        "no_findings_in_window",
+        "regression_detected"
+      ]
+    },
+    "correlation_id": { "type": "string", "minLength": 1, "maxLength": 64 },
+    "schema_version": { "type": "string", "const": "v1" },
+    "retryable": { "type": "boolean" },
+    "detail": { "type": "string", "minLength": 1, "maxLength": 500 }
+  }
+}

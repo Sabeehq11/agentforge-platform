@@ -2,9 +2,9 @@
 
 Adversarial AI security platform for the AgentForge Clinical Co-Pilot (Gauntlet AI, Week 3).
 
-**Status: P1 (threat model). Nothing attacks anything yet.** This repository makes no request to the target, calls
-no model and spends no money. Everything not listed under "Runnable today" is **(planned)** and must not be
-described as working.
+**Status: P2 (contracts and data model). Nothing attacks anything yet.** This repository makes no request to the
+target, calls no model and spends no money. Everything not listed under "Runnable today" is **(planned)** and must
+not be described as working.
 
 ## What this repo is
 
@@ -30,10 +30,19 @@ only over HTTP. See [TARGET_FREEZE.md](Docs/TARGET_FREEZE.md).
 - [Docs/PRD_TRACEABILITY.md](Docs/PRD_TRACEABILITY.md): every PRD requirement, the checkpoint that owns it, and the
   evidence so far.
 
+## Runnable today (P2)
+
+- Versioned message schemas in `contracts/v1/`, validated by the pinned `jsonschema` library
+  (`src/agentforge/contracts/`). Agent protocols in `src/agentforge/agents/` name those messages and do nothing else.
+  No agent is implemented.
+- A SQLite schema for exploits, regression cases, run logs and coverage metrics (`src/agentforge/store/`). Inserts
+  reject a duplicate attack sequence, a missing required field and a published status. Who may write is a design
+  record, [ACCESS_CONTROL.md](Docs/ACCESS_CONTROL.md), not an enforced role.
+
 ## Planned (not built)
 
-Contracts, attack suite, Judge, Red Team, Orchestrator, Documentation agent, regression harness, observability, load
-tests. Plan: [ROADMAP.md](Docs/ROADMAP.md). Progress and evidence: [PROGRESS.md](Docs/PROGRESS.md).
+Attack suite, Judge, Red Team, Orchestrator, Documentation agent, regression harness, observability, load tests.
+Plan: [ROADMAP.md](Docs/ROADMAP.md). Progress and evidence: [PROGRESS.md](Docs/PROGRESS.md).
 Decisions and open questions: [DECISIONS.md](Docs/DECISIONS.md).
 
 ## Target
@@ -66,6 +75,7 @@ python scripts/check_links.py
 python scripts/check_workflows.py
 python scripts/check_adrs.py
 python scripts/check_threat_model.py
+python scripts/check_schema_diff.py
 ```
 
 ## Safety rules

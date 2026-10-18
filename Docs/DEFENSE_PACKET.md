@@ -1,8 +1,8 @@
 # Architecture Defense evidence packet (draft)
 
-Draft for the Architecture Defense. Everything here is **(planned)**. Nothing described is implemented except the
-safety skeleton in `src/agentforge/safety/`. Message schemas are listed by name only. Their JSON Schemas are written
-in P2.
+Draft for the Architecture Defense. The safety skeleton in `src/agentforge/safety/` is implemented. The message
+schemas are published at `contracts/v1/` and checked by `src/agentforge/contracts/`. Agents that send them are not
+implemented.
 
 ## 1. Agent interaction diagram (planned)
 
@@ -46,7 +46,9 @@ flowchart LR
 | ConfirmedExploit | Judge to Documentation | Fields needed for a report | NoFindingsInWindow |
 | RegressionTrigger and RegressionResult | Orchestrator to harness | Run the suite on a target version change | RegressionDetected |
 
-The five error names are the PRD failure modes. Versions start at v1 in `/contracts` (P2).
+The five error names are the PRD failure modes. Each has a v1 schema in `contracts/v1/errors/`. The success schemas
+are `contracts/v1/campaign_request.schema.json`, `attack_result.schema.json`, `verdict.schema.json` and
+`confirmed_exploit.schema.json`.
 
 ## 3. Trust boundaries
 

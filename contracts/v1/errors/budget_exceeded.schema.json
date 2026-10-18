@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentforge.local/contracts/v1/errors/budget_exceeded.schema.json",
+  "title": "BudgetExceeded",
+  "description": "The next call would exceed the approved per-run cap, per-day cap, or attack-count cap.",
+  "allOf": [{ "$ref": "error_envelope.schema.json" }],
+  "properties": { "error_code": { "const": "budget_exceeded" } },
+  "unevaluatedProperties": false
+}

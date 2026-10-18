@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentforge.local/contracts/v1/errors/target_unreachable.schema.json",
+  "title": "TargetUnreachable",
+  "description": "The target did not answer, or the identity check failed. Raised before any attack is stored.",
+  "allOf": [{ "$ref": "error_envelope.schema.json" }],
+  "properties": { "error_code": { "const": "target_unreachable" } },
+  "unevaluatedProperties": false
+}

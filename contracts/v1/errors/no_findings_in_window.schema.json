@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentforge.local/contracts/v1/errors/no_findings_in_window.schema.json",
+  "title": "NoFindingsInWindow",
+  "description": "The Judge finished the window and confirmed nothing. This is not a pass verdict.",
+  "allOf": [{ "$ref": "error_envelope.schema.json" }],
+  "properties": { "error_code": { "const": "no_findings_in_window" } },
+  "unevaluatedProperties": false
+}
