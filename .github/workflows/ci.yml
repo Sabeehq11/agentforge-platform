@@ -1,6 +1,7 @@
 ##
-# Platform CI (P0). Lint, typecheck, tests with a coverage floor, security scan, secret scan, markdown link check and
-# a workflow guard. No secrets, no model calls, no request to the target: every test runs with sockets disabled.
+# Platform CI (P0, plus the P1 threat-model check). Lint, typecheck, tests with a coverage floor, security scan,
+# secret scan, markdown link check and a workflow guard. No secrets, no model calls, no request to the target: every
+# test runs with sockets disabled.
 # Live and paid runs are never part of this workflow. Later checkpoints add jobs and never remove one (ROADMAP 6).
 #
 # To make this block merging, mark the "CI" job as a required status check in branch protection for main. That is a
@@ -64,6 +65,9 @@ jobs:
 
     - name: ADR check (at least two rejected alternatives each)
       run: python scripts/check_adrs.py
+
+    - name: Threat-model check (category IDs, attributes, OWASP rows, summary length)
+      run: python scripts/check_threat_model.py
 
     - name: Workflow guard (no pull_request_target, least privilege, no secrets)
       run: python scripts/check_workflows.py

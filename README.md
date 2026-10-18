@@ -2,7 +2,7 @@
 
 Adversarial AI security platform for the AgentForge Clinical Co-Pilot (Gauntlet AI, Week 3).
 
-**Status: P0 (foundations). Nothing attacks anything yet.** This repository makes no request to the target, calls
+**Status: P1 (threat model). Nothing attacks anything yet.** This repository makes no request to the target, calls
 no model and spends no money. Everything not listed under "Runnable today" is **(planned)** and must not be
 described as working.
 
@@ -22,10 +22,18 @@ only over HTTP. See [TARGET_FREEZE.md](Docs/TARGET_FREEZE.md).
 - CI (`.github/workflows/ci.yml`): lint, mypy, tests with a coverage floor, Bandit, secret scan, markdown link
   check and a workflow guard. CI makes no live or paid calls.
 
+## Written in P1 (documents, not code that runs)
+
+- [THREAT_MODEL.md](THREAT_MODEL.md): the six attack categories, the OWASP mapping, and the platform's own threats.
+  Every defense it cites was established by reading the target's code, not by running it.
+- [USERS.md](USERS.md): who the platform is for and why automation is the right tool. Its checkpoint is unconfirmed.
+- [Docs/PRD_TRACEABILITY.md](Docs/PRD_TRACEABILITY.md): every PRD requirement, the checkpoint that owns it, and the
+  evidence so far.
+
 ## Planned (not built)
 
-Threat model, contracts, attack suite, Judge, Red Team, Orchestrator, Documentation agent, regression harness,
-observability, load tests. Plan: [ROADMAP.md](Docs/ROADMAP.md). Progress and evidence: [PROGRESS.md](Docs/PROGRESS.md).
+Contracts, attack suite, Judge, Red Team, Orchestrator, Documentation agent, regression harness, observability, load
+tests. Plan: [ROADMAP.md](Docs/ROADMAP.md). Progress and evidence: [PROGRESS.md](Docs/PROGRESS.md).
 Decisions and open questions: [DECISIONS.md](Docs/DECISIONS.md).
 
 ## Target
@@ -57,6 +65,7 @@ python scripts/secret_scan.py
 python scripts/check_links.py
 python scripts/check_workflows.py
 python scripts/check_adrs.py
+python scripts/check_threat_model.py
 ```
 
 ## Safety rules

@@ -12,7 +12,7 @@ Status values: `not started`, `in progress`, `blocked`, `done`.
 
 | Milestone | Due (PRD) | Checkpoints | Status |
 |---|---|---|---|
-| Architecture Defense | 4 hours after kickoff | P0, drafts of P1 and P2 | P0 done (reachability deferred to P3), P1 not started |
+| Architecture Defense | 4 hours after kickoff | P0, drafts of P1 and P2 | P0 done (reachability deferred to P3), P1 done, P2 not started |
 | MVP | Tuesday 11:59 PM | P0 to P5 | not started |
 | Final | Friday noon | P6 to P11 | not started |
 
@@ -31,14 +31,21 @@ The kickoff time is not recorded in the repo, so the Architecture Defense deadli
 | Request-rate cap toward the target | not started | |
 | Human approval for over-cap runs, new allowlist entries, load tests | not started | |
 
+## PRD traceability
+
+The full requirement-to-checkpoint matrix, with status and evidence, is [PRD_TRACEABILITY.md](PRD_TRACEABILITY.md).
+The audit of P0 and P1 is in that file, including the P1 closure audit. Two gaps are flagged and not fixed here,
+because neither is a small edit: no deployed URL is recorded (G-1, Q2), and the build-versus-configure tool claims
+are unverified (G-2).
+
 ## Deliverables (PRD submission table)
 
 | Deliverable | Needed at | Status | Notes |
 |---|---|---|---|
 | Deployed target URL | every checkpoint | not started | Quick tunnel URL rotates (Q2) |
 | GitHub repo with setup guide and run instructions | MVP | in progress | Layout decided: independent repo (ADR-001). README is P0-level |
-| `THREAT_MODEL.md` | MVP | not started | P1 |
-| `USERS.md` | MVP **(unconfirmed)** | not started | P1 |
+| `THREAT_MODEL.md` | MVP | done for P1 | Written at repo root. Defenses are by code reading, not tested |
+| `USERS.md` | MVP **(unconfirmed)** | done for P1 | Written at repo root. Checkpoint unconfirmed (Q5) |
 | `ARCHITECTURE.md` | MVP | not started | P5 |
 | `/contracts` | MVP first version | not started | P2 |
 | `evals/` with 3+ categories of results | MVP | not started | P3 |
@@ -124,15 +131,38 @@ The kickoff time is not recorded in the repo, so the Architecture Defense deadli
   - Provider-side spend limits (Q13): the gate exists and refuses; the limits are not set or attested.
 
 ### P1. Threat model and users
-- Status: not started. Depends on: P0.
-- [ ] `THREAT_MODEL.md` with ~500-word summary
-- [ ] Six PRD categories with surface, impact, difficulty, existing defenses
-- [ ] OWASP Top 10 and LLM Top 10 mapping, non-applicable items explained
-- [ ] Platform-side threats
-- [ ] `USERS.md`
-- [ ] Verify: defenses cited to files
-- [ ] CI: threat category ID check
-- Evidence:
+- Status: **done**, with the evidence below. Depends on: P0.
+- [x] `THREAT_MODEL.md` with ~500-word summary (543 words, within the checker's 450-550 band)
+- [x] Six PRD categories with surface, impact, difficulty, existing defenses (25 subcategory IDs, each with all four)
+- [x] OWASP Top 10 and LLM Top 10 mapping, non-applicable items explained (D-013; no attacker-controlled outbound URL construction identified for SSRF at the pinned SHA, which is not proof it is impossible). List names verified against the official pages on 2026-10-17, links recorded in THREAT_MODEL.md. Two CareTeam authorization weaknesses recorded there as P3 candidates.
+- [x] Platform-side threats (`TM-PL-1` to `TM-PL-6`)
+- [x] `USERS.md`
+- [x] Verify: defenses cited to files (spot-checked against the pinned SHA, see evidence)
+- [x] CI: threat category ID check (`scripts/check_threat_model.py`, wired into `.github/workflows/ci.yml`)
+- [x] Three manual checks recorded (closure audit 2026-10-17, against the original 17-page PRD):
+  1. Each of the six categories has attack surface, impact, difficulty and defense status. Checker: 25 subcategory
+     IDs, 0 problems, plus a read of the sections.
+  2. Every cited defense path exists at `9f03654`. File list in the evidence below. By code reading, not tested.
+  3. All 20 OWASP rows are present, each mapped or marked not applicable or out of scope with a reason. Names
+     checked against the official pages.
+- Evidence, 2026-10-17, Python 3.12.15, venv under `/tmp`:
+  - Target source was read at `9f036541cf95e896db065e0c652afb75627b03c2` through read-only fetches to a temp directory.
+    No request was made to the deployed target, no model was called, and nothing was spent.
+  - `scripts/check_threat_model.py`: 25 subcategory IDs, 11 references, 0 problems.
+  - Every defense citation was spot-checked against the fetched tree: `agent/app/gateway.py`, `signing.py`, `authz.py`,
+    `loop.py`, `tools.py`, `verifier.py`, `prompts.py`, `conversation.py`, `chat.py`, `audit.py`, `rules.py`,
+    `advice.py`, `w2/api.py`, `w2/vlm.py`, `w2/ingest.py`, `w2/store.py`, `w2/verify.py`, `w2/synthesis.py`,
+    `w2/supervisor.py`, `agent/AUTHZ_PROOF.md`, and the module's `public/chat.php`, `upload.php`, `source.php`,
+    `src/UserTokenIssuer.php`, `public/assets/copilot.js`. All present at the pin. The SSRF conclusion comes from
+    listing every `httpx` call site in `agent/app` and finding each URL built from settings plus a fixed path.
+  - Local CI command set, rerun 2026-10-17 on Python 3.12.15 (venv under `/tmp`, pinned tools): ruff clean, mypy clean
+    (7 files), `pytest --cov-fail-under=85` 84 passed at 96.26% coverage, Bandit clean, secret scan 0 hits, link check
+    34 links and 0 problems, workflow guard 0 problems, ADR check 7 ADRs and 0 problems, threat-model check 0 problems.
+    GitHub Actions has not run on these files: **UNVERIFIED** until the user pushes.
+  - Closure audit, 2026-10-17, against the original Week 3 PRD, the roadmap and `Docs/PRD_TRACEABILITY.md`. P1-owned
+    requirements (H-2, S-2, S-3, S-4, and the mapping half of E-11) are met. All 69 requirement rows have a checkpoint
+    owner. Unresolved, and not P1's to fix: G-1 (no deployed URL), G-2 (unverified tool claims), plus S-1, G-5 and
+    E-6. The P0 progress edit is in its own commit. GitHub Actions stays UNVERIFIED until this commit is pushed and CI runs.
 
 ### P2. Contracts and data model
 - Status: not started. Depends on: P1.
@@ -265,3 +295,8 @@ Record every paid call. The PRD asks for actual development spend.
 | 2026-10-17 | P0 implemented locally in `agentforge-platform` (adapted plan in `P0_plan.md`). Checked on Python 3.10.13 only. Nothing committed or pushed. Reachability, Python 3.12 and GitHub Actions UNVERIFIED. |
 | 2026-10-17 | Rechecked on Python 3.12.15, all local P0 checks pass. User ran four manual smoke tests (allowlist, budget, kill switch, missing OpenRouter attestation), reported successful. Target reachability remains deferred to P3. GitHub Actions remains UNVERIFIED until CI runs. |
 | 2026-10-17 | P0 marked done. Commit `4bbd1b6` pushed to `origin/main`. GitHub Actions CI #1 passed (user-reported, not independently confirmed by the assistant). 74 automated tests and four manual smoke tests recorded. Target reachability stays deferred to P3 (exception to the update rule). Provider spend-limit attestation (Q13) is pending before live testing. Nothing committed for this edit. |
+| 2026-10-17 | P1 implemented: `THREAT_MODEL.md`, `USERS.md`, `scripts/check_threat_model.py` and its tests, one CI step added. Q8 resolved as D-013 (no attacker-controlled outbound URL construction identified for SSRF at the pinned SHA, not proof it is impossible). No target request, no model call, no spend. Nothing committed or pushed. |
+| 2026-10-17 | P1 corrections: summary trimmed to 543 words (450-550 band restored in the checker) and the SSRF wording qualified in THREAT_MODEL.md and D-013. Checker and its 10 tests rerun, all passing. Nothing committed or pushed. |
+| 2026-10-17 | PRD traceability matrix written at `Docs/PRD_TRACEABILITY.md`. P0 and P1 audited against it. No requirement fix was small enough to make: the deployed URL (G-1) and the unverified tool claims (G-2) are flagged. Nothing committed or pushed. |
+| 2026-10-17 | OWASP names in THREAT_MODEL.md checked against the official 2021 Web and 2023 v1.1 LLM pages. Both match; one hyphenation corrected (A10); UNVERIFIED labels removed and the source links recorded. Two CareTeam authorization weaknesses from the P1 code review recorded as P3 candidates. No model or target call. Nothing committed or pushed. |
+| 2026-10-17 | P1 closure audit against the original 17-page PRD, the roadmap and `Docs/PRD_TRACEABILITY.md`. P1-owned requirements met. Three manual checks recorded. All 69 requirement rows have a checkpoint owner. G-1 and G-2 remain unresolved, with S-1, G-5 and E-6. P1 judged ready to commit. No model or target call. |

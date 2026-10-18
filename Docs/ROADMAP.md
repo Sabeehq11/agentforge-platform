@@ -398,6 +398,9 @@ the existing `W2 Eval Gate` keeps running unchanged on the target.
 
 ## 7. PRD traceability (summary)
 
+The detailed matrix, with status and evidence per requirement, is [PRD_TRACEABILITY.md](PRD_TRACEABILITY.md). This
+table is the checkpoint index.
+
 | PRD requirement | Checkpoint |
 |---|---|
 | Stand up target, document changes, deployed URL | P0, every checkpoint |

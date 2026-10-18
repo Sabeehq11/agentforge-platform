@@ -25,6 +25,7 @@ Rules:
 | D-010 | Repo strategy B: this independent repo, target pinned by SHA, HTTP only. Paths `agent/`, `evals/` and `docs/week2/` in these docs are target-repo paths. See ADR-001. Resolves Q1 for P0 (PRD wording unconfirmed by staff). | User approval | 2026-10-17 |
 | D-011 | Target access is the public OpenEMR module as a synthetic identity (ADR-002). Persisted SQLite state machine, no LangGraph (ADR-003). Per-role model config with distinct Red Team and Judge families (ADR-004). SQLite state (ADR-005). Own SQLite traces (ADR-006). Quick tunnel with reviewed manual edits, provisional (ADR-007). Python 3.12. Provider-side spend limits required before any live test. | User approval | 2026-10-17 |
 | D-012 | P0 makes zero requests to the target. Reachability is UNVERIFIED until P3. | User instruction | 2026-10-17 |
+| D-013 | Q8, by code reading at the pinned SHA, not by staff confirmation. Of the PRD-named items, no attacker-controlled outbound URL construction was identified for SSRF (A10): every outbound URL found is built from settings plus a fixed path. That is not proof SSRF is impossible. Vulnerable components (A06) and supply chain (LLM05) apply to the platform and are tracked as a P9 scan, not as attack cases. The rest apply and are mapped in THREAT_MODEL.md. The list names were checked against the official pages on 2026-10-17 and match. | P1 code reading | 2026-10-17 |
 
 ## 2. Open questions
 
@@ -79,8 +80,8 @@ Each question lists the options, what it blocks, and who or what answers it. Non
 
 ### Q8. OWASP applicability
 - **Question:** Which OWASP Top 10 and LLM Top 10 items apply to the Co-Pilot (for example SSRF, supply chain)?
-- **Known:** The PRD lists them as relevant "to the Clinical Co-Pilot". Applicability depends on the target's actual surfaces.
-- **Resolved by:** reading the target code in P1. Each non-applicable item is recorded with a reason, not omitted.
+- **Resolved:** D-013, from reading the target code at the pinned SHA. The per-item dispositions and reasons are in
+  THREAT_MODEL.md. Staff confirmation was not sought; the resolution is a code reading, and it is void if the pin moves.
 
 ### Q9. Agent framework
 - **Question:** Hand-written state machine (as in Weeks 1 and 2) or an existing framework such as LangGraph?
