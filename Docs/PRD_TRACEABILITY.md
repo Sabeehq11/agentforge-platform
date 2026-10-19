@@ -170,15 +170,37 @@ One synthetic disagreement was judged before it was corrected. Item `label-drift
 
 No row below was marked met by this pass. Ownership did not move.
 
+## P5 closure audit (2026-10-19)
+
+Documentation only. No target request, no model call, no new spend. `LIVE_ENABLED` and `PROVIDER_ENABLED` stay `False`. Nothing committed or pushed.
+
+- **Met by P5:** H-5, C-6, C-7 (not applicable) and X-9. S-7 and M-1 moved forward and stay partial, for the reasons in their rows.
+- **ARCHITECTURE.md sections A to K** cover failure and recovery, versioned handoff and errors, Orchestrator policy, the exploit-to-regression lifecycle, observability, model choice, build versus configure, scale, Judge uncertainty, Red Team novelty and harmful output, and continuous improvement. Each claim is labeled Built (with a file) or Planned (with P6 to P9). The scale figures are provisional until P8.
+- **MVP gate table** (hard gates):
+
+| Gate | Status | Note |
+|---|---|---|
+| H-1 deployed URL | gap | Owner: the operator. Open gap G-1. Not met |
+| H-2 threat model | met | P1 |
+| H-3 evals in 3 categories | met | P3 and P4 |
+| H-4 one agent live | met | P4 |
+| H-5 architecture | met | P5 |
+
+- **H-1 ownership and closeout.** The operator supplies a public URL (Q2). Then a reviewed `config/allowlist.yaml` edit adds the host. Then one identity GET and the zero-spend `seed-tm-ex-3` case run against it. Then the result goes into [TARGET_FREEZE.md](TARGET_FREEZE.md). P11 re-checks it. A tunnel or VPS choice is not P5 work (ADR-007 rejected both, pending Q2).
+- **Spend** is recorded in the [PROGRESS.md](PROGRESS.md) spend log: $0.1022 of the $5.00 ceiling.
+- **Still open, unchanged by P5:** E-6 (no provider-side limit attested), S-1 (running stack against the pin), G-2 (tool claims unverified), G-5 (branch protection). M-2, M-3, M-4, M-12, E-1 and E-3 stay partial.
+- **CI:** GitHub Actions passed on commit `22e7983` (user-reported, the assistant has no run log). P5 changes are not CI-verified until pushed.
+- **Not P5 work:** the demo video, vulnerability reports and cost projections. They are Final artifacts (P7, P10, P11).
+
 ## Hard gates
 
 | Id | PRD requirement | Checkpoint | Status | Evidence |
 |---|---|---|---|---|
-| H-1 | Deployed target URL submitted with every checkpoint | P0, then every checkpoint | gap | No URL in [TARGET_FREEZE.md](TARGET_FREEZE.md). Q2 open. G-1 |
+| H-1 | Deployed target URL submitted with every checkpoint | P0, then every checkpoint | gap | No URL in [TARGET_FREEZE.md](TARGET_FREEZE.md). Q2 open. G-1. **Owner: the operator.** P5 records it as an open gap in the README and the ARCHITECTURE deployment note and does not mark it met. Closeout steps are in "P5 closure audit" below. P11 re-checks it |
 | H-2 | `THREAT_MODEL.md` with a ~500-word summary first, six categories, four attributes each | P1 | met | [THREAT_MODEL.md](../THREAT_MODEL.md). Summary 543 words. `scripts/check_threat_model.py`: 0 problems. Closure audit 2026-10-17 |
 | H-3 | `evals/` with results from at least three attack categories | P3 | met | Owned by P3; P4 supplied the execution on 2026-10-19 and does not reassign the row. `evals/results/campaign-latest.json` stores graded `pass` from a live target run in three distinct categories: `seed-tm-ex-3` (TM-EX), `seed-tm-ds-1` (TM-DS), `seed-tm-pi-1` (TM-PI). See "P4 execution closure (2026-10-19)" above |
 | H-4 | One agent role running live against the deployed target | P4 | met | Owned by P4. `evals/results/agent-live.json`: one `red_team` role (`SeedMutator`), one live target call against the deployed local target, outcome `pass`, traceable via `ledger_call_id` `target-chat-685a5e0c6be2` to an incurred row in the SQLite ledger. The Stage 3 hard gate (H-3 and H-4 both met) is now satisfied |
-| H-5 | `ARCHITECTURE.md` with a ~500-word summary, each agent named, a diagram | P5 | not started | Draft diagram only, in [DEFENSE_PACKET.md](DEFENSE_PACKET.md) |
+| H-5 | `ARCHITECTURE.md` with a ~500-word summary, each agent named, a diagram | P5 | met | [ARCHITECTURE.md](../ARCHITECTURE.md): summary of about 500 words naming all four agents, an agent table, a mermaid diagram with Built and Planned edges. `scripts/check_architecture.py` passes |
 
 ## Stage deliverables
 
@@ -190,13 +212,13 @@ No row below was marked met by this pass. Ownership did not move.
 | S-4 | `USERS.md`: users, workflows, use cases, why automation | P1 | met | [USERS.md](../USERS.md). Due checkpoint unconfirmed (Q5); written at P1 anyway |
 | S-5 | Build-versus-configure record before any agent: Burp, ZAP, Semgrep, Garak, commercial platforms, and why custom code is or is not justified | P0 | partial | [BUILD_VS_CONFIGURE.md](BUILD_VS_CONFIGURE.md) covers each named tool plus promptfoo, PyRIT and deterministic tooling. Claims are unverified. G-2 |
 | S-6 | Architecture Defense evidence packet: diagram, message schemas, trust boundaries, failure modes | P0 | met as a draft | [DEFENSE_PACKET.md](DEFENSE_PACKET.md). JSON Schemas now published at `contracts/v1/` (G-3 resolved, row kept). The packet is still a draft, not `ARCHITECTURE.md` |
-| S-7 | Independent code repo, setup guide, deployed link, run instructions | P0 layout, P5 guide | partial | ADR-001. README has setup for what exists. Deployed link is G-1. Run-against-target instructions are P5, because there is nothing to run yet |
+| S-7 | Independent code repo, setup guide, deployed link, run instructions | P0 layout, P5 guide | partial | ADR-001. The P5 README has setup, a dry-run command (`python scripts/check_evals.py`) and operator-gated live steps. The deployed link is still G-1 (H-1), so the row stays partial |
 
 ## Multi-agent system
 
 | Id | PRD requirement | Checkpoint | Status | Evidence |
 |---|---|---|---|---|
-| M-1 | Distinct agents, not a single agent or a pipeline. Each has inputs, outputs, trust level | P5 to define, P6 to run | not started | Named in the draft diagram only |
+| M-1 | Distinct agents, not a single agent or a pipeline. Each has inputs, outputs, trust level | P5 to define, P6 to run | partial | Defined in the [ARCHITECTURE.md](../ARCHITECTURE.md) agent table with inputs, outputs and trust level. Two agents exist in limited form (Judge, `SeedMutator`). The Orchestrator and Documentation agent are Planned, so the row is not met until P6 runs them |
 | M-2 | Novel attack generation, mutation of partial successes, multi-turn sequences | P4 seed, P6 full | partial | P4 seed only: `src/agentforge/agents/red_team.py` mutates one seed under the budget, now exercised live once (`evals/results/agent-live.json`, 2026-10-19). Still one bounded mutation of an existing seed, not novel generation or a multi-turn sequence. Those remain P6 and are not started |
 | M-3 | Judge independent of attack generation, consistent criteria across runs and versions | P4 | partial | Owned by P4. Independence is met on the stub path: `src/agentforge/agents/judge.py` grades a validated transcript and does not read attacker claims. Same-family config is refused. A live TM-PI-1 transcript now exists (2026-10-19) but is one target version, not a second one. Met only after a second graded target version is stored and the same transcript criteria match. Not moved to P6 |
 | M-4 | Judge ground truth, and a documented way to detect and correct drift | P4 | partial | Owned by P4. Detection and one stub correction are recorded: [JUDGE_DRIFT.md](JUDGE_DRIFT.md), item `label-drift-quote`. A provider Judge check ran 2026-10-19 and is measured (`evals/results/judge-drift.json`): `anthropic/claude-sonnet-4.5`, 1 call, provider precision 1.0 and recall 1.0. Only one labeled item is ambiguous, so this is one scored item, not a rate. Stays partial until the labeled set has more ambiguous items. Not moved |
@@ -236,8 +258,8 @@ No row below was marked met by this pass. Ownership did not move.
 | C-3 | Producer-side and consumer-side contract tests. A breaking change fails without a version bump | P2 | met | `tests/test_contracts.py`, `tests/test_contracts_nested.py` (16 passed), `tests/test_schema_diff.py`. Manual schema-diff check exited 1. CI step in `.github/workflows/ci.yml` |
 | C-4 | Typed error schemas: target unreachable, budget exceeded, judge timeout, no findings in window, regression detected | P2 | met | Five schemas in `contracts/v1/errors/`. `test_each_error_validates_against_its_own_schema`, `test_unknown_error_code_is_rejected` |
 | C-5 | A migration note for every interface change | P2 | met | [DECISIONS.md](DECISIONS.md) section 5, both rows. Note: [0001-initial-schema.md](migrations/0001-initial-schema.md). `test_a_migration_without_a_note_is_refused` |
-| C-6 | Rate limits and auth documented for every external API, with backoff, queue or abort | P5 | not started | Target limiter is described in the threat model. Platform behavior is not documented as a spec yet |
-| C-7 | Pagination documented | P5 | unconfirmed | None of the planned APIs are paged. Confirm at P5 and mark not applicable if it stays that way, rather than inventing pages |
+| C-6 | Rate limits and auth documented for every external API, with backoff, queue or abort | P5 | met | "API limits and authentication" in [ARCHITECTURE.md](../ARCHITECTURE.md) covers the target and OpenRouter: auth, limits, and abort behavior (a 429 or 503 is returned, never retried; a refusal aborts). No backoff or queue is built, and the document says so |
+| C-7 | Pagination documented | P5 | met | Not applicable, recorded in [ARCHITECTURE.md](../ARCHITECTURE.md) "Pagination". No planned API is paged and no pages were invented |
 
 ## Security, safety, cost
 
@@ -272,7 +294,7 @@ No row below was marked met by this pass. Ownership did not move.
 | X-6 | AI cost analysis: actual spend, and projections at 100, 1K, 10K and 100K from measured per-run cost | P10 | not started | Spend log in [PROGRESS.md](PROGRESS.md) is empty. Actual-spend-at-MVP is the plan (Q5) |
 | X-7 | Demo video, 3 to 5 minutes, live attacks, one per submission | P11 | unconfirmed | Final is required. Whether MVP needs its own is Q5 |
 | X-8 | Social post tagging @GauntletAI | P11 | not started | PRD says final only |
-| X-9 | AI-use disclosure in `ARCHITECTURE.md`: every AI role, the check or approval after each AI decision, remaining risk | P5 | not started | |
+| X-9 | AI-use disclosure in `ARCHITECTURE.md`: every AI role, the check or approval after each AI decision, remaining risk | P5 | met | The "AI-use disclosure" table in [ARCHITECTURE.md](../ARCHITECTURE.md) lists each AI role, its check or approval and its remaining risk |
 
 ## How to update this file
 

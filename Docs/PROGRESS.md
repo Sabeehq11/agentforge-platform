@@ -13,7 +13,7 @@ Status values: `not started`, `in progress`, `blocked`, `done`.
 | Milestone | Due (PRD) | Checkpoints | Status |
 |---|---|---|---|
 | Architecture Defense | 4 hours after kickoff | P0, drafts of P1 and P2 | P0 done (reachability still unverified), P1 done, P2 done |
-| MVP | Tuesday 11:59 PM | P0 to P5 | not started |
+| MVP | Tuesday 11:59 PM | P0 to P5 | P0 to P5 built locally. H-1 (deployed URL) is an open gap owned by the operator |
 | Final | Friday noon | P6 to P11 | not started |
 
 The kickoff time is not recorded in the repo, so the Architecture Defense deadline is unconfirmed.
@@ -42,16 +42,16 @@ are unverified (G-2).
 
 | Deliverable | Needed at | Status | Notes |
 |---|---|---|---|
-| Deployed target URL | every checkpoint | not started | Quick tunnel URL rotates (Q2) |
-| GitHub repo with setup guide and run instructions | MVP | in progress | Layout decided: independent repo (ADR-001). README is P0-level |
+| Deployed target URL | every checkpoint | not started | Open gap G-1 / H-1. **Owner: the operator.** Quick tunnel URL rotates (Q2). Tested only at `127.0.0.1:8300` |
+| GitHub repo with setup guide and run instructions | MVP | done except the deployed link | Independent repo (ADR-001). P5 README has setup, dry run and operator-gated live steps. The deployed link is H-1 |
 | `THREAT_MODEL.md` | MVP | done for P1 | Written at repo root. Defenses are by code reading, not tested |
 | `USERS.md` | MVP **(unconfirmed)** | done for P1 | Written at repo root. Checkpoint unconfirmed (Q5) |
-| `ARCHITECTURE.md` | MVP | not started | P5 |
+| `ARCHITECTURE.md` | MVP | done | P5. Root `ARCHITECTURE.md`, checked by `scripts/check_architecture.py`. Planned items are labeled |
 | `/contracts` | MVP first version | done for P2 | v1 schemas in `contracts/v1/`. Full coverage of both sides is Final |
 | `evals/` with 3+ categories of results | MVP | done | `evals/results/campaign-latest.json`: `seed-tm-ex-3` (TM-EX), `seed-tm-ds-1` (TM-DS), `seed-tm-pi-1` (TM-PI), all graded `pass` against the live local target, 2026-10-19. H-3 is owned by P3; P4 supplied the execution |
 | One agent live against the target | MVP | done | `evals/results/agent-live.json`, 2026-10-19: one `red_team` role, one live target call, outcome `pass`, traceable to the SQLite ledger. H-4 |
 | Vulnerability reports (3 minimum) | Final, MVP unconfirmed (Q5) | not started | P7 |
-| AI cost analysis | Final, actual spend at MVP | not started | P10 |
+| AI cost analysis | Final, actual spend at MVP | actual spend recorded | Spend log below: $0.1022. Projections at 100, 1K, 10K and 100K are P10 |
 | Demo video, 3 to 5 minutes | MVP unconfirmed (Q5), Final | not started | P11 |
 | Social post | Final | not started | P11 |
 | Build-versus-configure record | Architecture Defense | in progress | P0. `Docs/BUILD_VS_CONFIGURE.md`, tool claims unverified |
@@ -252,14 +252,21 @@ are unverified (G-2).
   - Closure: H-3, H-4 and E-7 are met. M-12 is now partial (2 of 4 roles have models). M-4 stays partial (one ambiguous labeled item). M-3 and M-2 stay partial by design.
 
 ### P5. MVP pack
-- Status: not started. Depends on: P1 to P4.
-- [ ] `ARCHITECTURE.md` with summary, diagram, agents, AI-use disclosure, API limits and auth
-- [ ] README setup and run instructions
-- [ ] Spend so far recorded
-- [ ] Verify: fresh clone runs a dry-run campaign
-- [ ] Verify: every MVP hard gate ticked against the PRD
-- [ ] CI: documentation checks
-- Evidence:
+- Status: done locally, pending operator push and CI. Depends on: P1 to P4.
+- [x] `ARCHITECTURE.md` with summary, diagram, agents, AI-use disclosure, API limits and auth
+- [x] README setup and run instructions
+- [x] Spend so far recorded
+- [x] Verify: fresh clone runs a dry-run campaign (`python scripts/check_evals.py`)
+- [x] Verify: every MVP hard gate ticked against the PRD. H-2 to H-5 met. **H-1 is not met**: it is an open gap, owner: the operator (see the P5 closure audit in `PRD_TRACEABILITY.md`)
+- [x] CI: documentation checks (`scripts/check_architecture.py` and its test, wired into `ci.yml`)
+- Evidence (2026-10-19, local, Python 3.12 venv, no network, no model call):
+  - `ARCHITECTURE.md`: summary 506 words naming all four agents, agent table, two mermaid diagrams, sections A to K labeled Built or Planned, AI-use disclosure table, API limits and auth, pagination not applicable, H-1 deployment note.
+  - `python scripts/check_architecture.py` exit 0. `tests/test_check_architecture.py` 10 tests pass.
+  - Full CI command set exit 0: ruff, mypy (35 files), pytest (coverage 86.63%, floor 85%), Bandit, secret scan, link check (94 links), workflow guard, ADR check, threat-model check, architecture check, schema diff, `scripts/check_evals.py` (7 cases, dry-run fabricated no pass).
+  - `LIVE_ENABLED` and `PROVIDER_ENABLED` are both `False` in `src/agentforge/safety/chokepoint.py`. No secret in tracked files.
+  - Spend recorded in the spend log: $0.1022 of $5.00.
+  - **H-1 is not met.** Open gap G-1, owner: the operator. H-2 to H-5 are met. Details in the P5 closure audit in `PRD_TRACEABILITY.md`.
+  - Not CI-verified on GitHub until the operator pushes. CI on `22e7983` passed (user-reported).
 
 ### P6. Orchestrator and multi-agent run
 - Status: not started. Depends on: P2 to P4.
@@ -334,6 +341,16 @@ Record every paid call. The PRD asks for actual development spend.
 
 | Date | Purpose | Provider and model | Approved cap (USD) | Actual (USD) | Notes |
 |---|---|---|---|---|---|
+| 2026-10-19 | P4 live run: two chats that bill the target (ledger rows `target-chat-5` and `target-chat-685a5e0c6be2`) | Target (local Co-Pilot, its own model spend) | 0.05 reserved per chat | 0.1000 | Two `target` rows incurred 0.05 each, from `evals/results/campaign-latest.json` and `evals/results/agent-live.json`. The target's real bill is not independently attested, so this is the reserved figure |
+| 2026-10-19 | Model probe, Judge role (three completed calls) | OpenRouter `anthropic/claude-sonnet-4.5` | 0.01 reserved per call | 0.000873 | Three rows at 0.000291: the measured M-12 call, a run that stopped locally after the provider billed it, and `probe-judge-a6b9e5ffc3f3`. **The `a6b9e5ffc3f3` charge is inferred, not recorded.** That run crashed in local scoring after the provider answered, so no per-call cost was stored. It was settled by `Ledger.settle_orphan` at 0.000291, the cost the two other calls with the same request reported (see the P4 evidence block, "Shared ceiling"). The true charge may differ by a fraction of a cent. Four earlier `probe-judge` rows were released at 0.0000 |
+| 2026-10-19 | Model probe, Red Team role (one call, refused) | OpenRouter `openai/gpt-4.1-mini` | 0.01 reserved | 0.0000228 | The call was refused by the model. See `Docs/MODEL_PROBE.md` |
+| 2026-10-19 | Direct diagnostic on the Judge path | OpenRouter `anthropic/claude-sonnet-4.5` | 0.01 reserved | 0.000975 | Row `diag-judge-112a52e0c6ee`. This was the first call after the key limit was raised. The provider returned HTTP 200 with a 262-character explanation instead of one label, so the strict parser rejected it, but the call was billed and its cost was recorded |
+| 2026-10-19 | Provider Judge drift score, one ambiguous labeled item | OpenRouter `anthropic/claude-sonnet-4.5` | 0.01 reserved | 0.000333 | Row `judge-9adefda49ebf`. Result in `evals/results/judge-drift.json` |
+| | **Total to date** | | $5.00 shared ceiling | **0.1022** | 0.1000 target plus 0.0022 provider. Sum of `agent_spend` rows in the local ledger, read only. Remaining headroom 4.8978. The ledger file is git-ignored, so this table is the committed record |
+
+**Key-limit episode.** The shared OpenRouter key had exceeded its own provider-set total limit (`$250.20` of `$250.00` used, no reset). The first probe and Judge runs on 2026-10-19 were refused with HTTP 403 and released at $0, so they appear as zero-cost released rows, not as spend (`Docs/MODEL_PROBE.md`, "Earlier attempt"). The key owner then raised the limit, and every provider row above was billed after that. This is not a provider spend-limit attestation: `config/spend_limits.yaml` is still empty, an operator approval stood in for it, and E-6 stays open.
+
+Zero-cost rows (two `red_team` reservations and the released probe reservations) are not listed. The PRD asks for actual development spend. The AI cost analysis at 100, 1K, 10K and 100K runs is P10, not P5.
 
 ## Log
 
@@ -352,3 +369,4 @@ Record every paid call. The PRD asks for actual development spend.
 | 2026-10-17 | P3 seed suite and deterministic executor implemented. Six synthetic cases, dry-run default, refusal log, identity check, rate cap and PHI scan. `LIVE_ENABLED` stays false and is not bypassable by an env flag. No target request, no model call, no spend. Live run not started. Nothing committed or pushed. |
 | 2026-10-18 | P3 public-module session path added and tested with fakes only. Identity mismatch makes no later call. Chat is not sent unless patient context is confirmed by an injected verified workflow; the pinned source shows none, so those cases stay `not_run`. TM-EX-2, TM-PI-2 stay `not_run`. TM-DS-3 stays local. H-3, H-4, G-1, E-3 live half and E-6 stay open. No target request, no model call, no spend. Nothing committed or pushed. |
 | 2026-10-18 | P3 local CI recorded: 187 tests passed, 91.54% coverage, and every workflow check exited 0. Local implementation is recorded. Live execution, H-3, H-4, G-1, E-3 live half, E-6 and S-1 stay open. No PRD traceability status was changed. No target request, no model call, no spend. Nothing committed or pushed. |
+| 2026-10-19 | P5 implemented locally: `ARCHITECTURE.md`, README rewrite, spend log, architecture check, test and CI step, traceability closure audit. All local CI checks exit 0. H-1 stays an open gap owned by the operator. No target request, no model call, no new spend. Nothing committed or pushed. |

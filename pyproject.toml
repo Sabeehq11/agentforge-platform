@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "agentforge-platform"
 version = "0.0.1"
-description = "Adversarial AI security platform for the AgentForge Clinical Co-Pilot (P3 seed suite)"
+description = "Adversarial AI security platform for the AgentForge Clinical Co-Pilot (P5: architecture and MVP pack)"
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "PyYAML==6.0.2",

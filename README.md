@@ -2,10 +2,13 @@
 
 Adversarial AI security platform for the AgentForge Clinical Co-Pilot (Gauntlet AI, Week 3).
 
-**Status: P3 in progress (seed suite and deterministic executor). Nothing has attacked the target.** This
-repository makes no request to the target, calls no model and spends no money. `LIVE_ENABLED` is false. An
-environment variable cannot turn it on. Everything not listed under "Runnable today" is **(planned)** and must
-not be described as working.
+**Status: P5 (architecture and MVP pack), on top of P0 to P4.** The committed code makes no request to the target
+and calls no model. `LIVE_ENABLED` and `PROVIDER_ENABLED` are both `False` in committed code, and an environment
+variable cannot turn either on. Anything not listed under "Built" is **(planned)** and must not be described as
+working.
+
+Start with [ARCHITECTURE.md](ARCHITECTURE.md). It names the four agents, marks each claim Built or Planned, and
+links the schemas, threat model and decisions.
 
 ## What this repo is
 
@@ -13,57 +16,52 @@ An independent repository (repo strategy B, see [ADR-001](Docs/adr/001-repo-stra
 external HTTP target and is not part of this repository. The platform pins the target by commit SHA and reaches it
 only over HTTP. See [TARGET_FREEZE.md](Docs/TARGET_FREEZE.md).
 
-## Runnable today (P0)
+## Built
 
-- A default-deny target allowlist, a cost budget with an approval token and kill switch, a provider spend-limit
-  attestation gate, and one HTTP chokepoint that runs them in order. `LIVE_ENABLED` is `False`, so no real
-  transport exists. Code: `src/agentforge/safety/`. Config: `config/`.
-- A check that Red Team and Judge models come from different families (`src/agentforge/models_config.py`).
-- Tests for all of the above (`tests/`), including a test that no socket is opened.
-- CI (`.github/workflows/ci.yml`): lint, mypy, tests with a coverage floor, Bandit, secret scan, markdown link
-  check and a workflow guard. CI makes no live or paid calls.
+- **Safety envelope** (`src/agentforge/safety/`, `config/`): a default-deny allowlist, one HTTP chokepoint, a budget
+  with an attack cap and kill switch, an operator approval gate, a request-rate cap, a refusal log (created at runtime
+  at `evals/results/refusals.log` by the live scripts, so a fresh clone does not have it), a PHI scan, and a
+  persistent shared ledger with a $5 ceiling (`ledger.py`).
+- **Contracts and store** (`contracts/v1/`, `src/agentforge/contracts/`, `src/agentforge/store/`): versioned
+  message and error schemas, and a SQLite store that rejects a duplicate sequence, a missing field and a published
+  status.
+- **Seed suite and executor** (`evals/cases/`, `src/agentforge/evals/`): seven synthetic cases across TM-PI, TM-EX
+  and TM-DS, deterministic graders, and a session client for the target login and chat.
+- **Judge** (`src/agentforge/agents/judge.py`): deterministic rules first, a model only for an ambiguous transcript.
+  A labeled set and a drift procedure are in `evals/judge/` and [JUDGE_DRIFT.md](Docs/JUDGE_DRIFT.md).
+- **Red Team, partial** (`src/agentforge/agents/red_team.py`): `SeedMutator`, a deterministic mutator. It calls no
+  model.
+- **Model config** (`config/models.yaml`, `src/agentforge/models_config.py`): Red Team and Judge must use different
+  model families. The probe record is [MODEL_PROBE.md](Docs/MODEL_PROBE.md).
+- **CI** (`.github/workflows/ci.yml`): lint, mypy, tests with a coverage floor, Bandit, secret scan, link check,
+  workflow guard, schema and suite checks. CI makes no live or paid calls.
 
-## Written in P1 (documents, not code that runs)
+## Evidence so far
 
-- [THREAT_MODEL.md](THREAT_MODEL.md): the six attack categories, the OWASP mapping, and the platform's own threats.
-  Every defense it cites was established by reading the target's code, not by running it.
-- [USERS.md](USERS.md): who the platform is for and why automation is the right tool. Its checkpoint is unconfirmed.
-- [Docs/PRD_TRACEABILITY.md](Docs/PRD_TRACEABILITY.md): every PRD requirement, the checkpoint that owns it, and the
-  evidence so far.
+- A local, operator-run campaign graded three cases `pass` against the target at `127.0.0.1:8300`: TM-PI-1,
+  TM-EX-3 and TM-DS-1 (`evals/results/campaign-latest.json`). One live `SeedMutator` turn is in
+  `evals/results/agent-live.json`. These are defense-held results, not discovered exploits.
+- The Judge was measured on four labeled items and one provider-scored ambiguous item. That is not a rate.
+- Spend to date is $0.1022 of the $5.00 shared ceiling. See the spend log in [PROGRESS.md](Docs/PROGRESS.md).
+- GitHub Actions passed on commit `22e7983` (reported by the operator). Changes made after that commit are not
+  CI-verified until they are pushed.
 
-## Runnable today (P2)
+## Deployed link
 
-- Versioned message schemas in `contracts/v1/`, validated by the pinned `jsonschema` library
-  (`src/agentforge/contracts/`). Agent protocols in `src/agentforge/agents/` name those messages and do nothing else.
-  No agent is implemented.
-- A SQLite schema for exploits, regression cases, run logs and coverage metrics (`src/agentforge/store/`). Inserts
-  reject a duplicate attack sequence, a missing required field and a published status. Who may write is a design
-  record, [ACCESS_CONTROL.md](Docs/ACCESS_CONTROL.md), not an enforced role.
-
-## Runnable today (P3)
-
-- A seed suite of six synthetic cases in `evals/cases/` across TM-PI, TM-EX and TM-DS. Dry-run is the default and
-  does not open a socket. A case that needs a target is `not_run`, not `pass`.
-- Deterministic graders for a canary, a patient-id boundary, a missing session and the attack-count cap
-  (`src/agentforge/evals/`). Replay grades a recorded transcript. It does not call the target.
-- Refusal log, login-page identity check, request-rate cap and a PHI scan before a result is written
-  (`src/agentforge/safety/`). The allowlist file is still empty, so a live call is refused.
-- No graded result against the deployed target exists. That run is manual and has not been started.
+**None. Open gap G-1 (hard gate H-1). Owner: the operator.** No public URL exists, and the target has only been
+tested at `127.0.0.1:8300`. Closeout steps are in the deployment note in [ARCHITECTURE.md](ARCHITECTURE.md). The
+Cloudflare quick tunnel question is Q2 in [DECISIONS.md](Docs/DECISIONS.md).
 
 ## Planned (not built)
 
-Judge, Red Team, Orchestrator, Documentation agent, regression harness, observability, load tests. One agent role
-live against the target is P4, not this checkpoint.
-Plan: [ROADMAP.md](Docs/ROADMAP.md). Progress and evidence: [PROGRESS.md](Docs/PROGRESS.md).
-Decisions and open questions: [DECISIONS.md](Docs/DECISIONS.md).
+- **P6:** Orchestrator, model-driven Red Team, persisted run state.
+- **P7:** regression harness and Documentation agent.
+- **P8:** observability queries and load tests.
+- **P9:** the platform's own access control and security review.
+- Later checkpoints are in [ROADMAP.md](Docs/ROADMAP.md). Progress and evidence: [PROGRESS.md](Docs/PROGRESS.md).
+  Decisions and open questions: [DECISIONS.md](Docs/DECISIONS.md).
 
-## Target
-
-- Pinned commit and caveats: [TARGET_FREEZE.md](Docs/TARGET_FREEZE.md).
-- Deployed URL: provisional and unconfirmed. The Cloudflare quick tunnel URL rotates (Q2). Reachability is
-  UNVERIFIED. P3 did not request the login page.
-
-## Develop
+## Setup
 
 Python 3.12 is required (`pyproject.toml`).
 
@@ -74,6 +72,16 @@ pip install -r requirements-dev.txt
 pip install -e .
 pytest
 ```
+
+## Dry run (no network, no model, no spend)
+
+```
+python scripts/check_evals.py
+```
+
+This validates every case against `evals/schema/case.schema.json`, scans fixtures for PHI patterns, and runs the
+suite in dry-run mode. It exits 0 and prints `OK 7 cases ... dry-run fabricated no pass`. A dry run never reports a
+`pass`: a case that needs a target is `not_run`. Replay of a recorded transcript is covered by `tests/test_evals.py`.
 
 Local checks that CI also runs:
 
@@ -87,12 +95,39 @@ python scripts/check_links.py
 python scripts/check_workflows.py
 python scripts/check_adrs.py
 python scripts/check_threat_model.py
+python scripts/check_architecture.py
 python scripts/check_schema_diff.py
 python scripts/check_evals.py
 ```
 
+## Live execution (operator-gated)
+
+The committed code cannot run live. Only the operator can enable it, and only on their own machine. This section
+describes the gates and does not do any of it for you.
+
+1. Review and make a local edit to `config/allowlist.yaml` so it admits the target host. A change here is reviewed
+   like code.
+2. Copy `.env.example` to `.env` (git-ignored) and fill in the operator-held values: the budget secret and token, the
+   target origin, the fixture credentials, and the per-chat reserve. Never paste a key or password into chat or a
+   tracked file.
+3. Copy `config/operator_approval.example.yaml` to `config/operator_approval.yaml` (git-ignored) and record a $5
+   approval. This is an operator approval, not a provider-dashboard attestation, and it does not prove a provider
+   limit exists.
+4. Set `LIVE_ENABLED` in `src/agentforge/safety/chokepoint.py` to `True` locally for a target run. Set
+   `PROVIDER_ENABLED` locally for a model call. Revert both before committing. Neither can be set from the
+   environment.
+5. Run one script: `scripts/live_identity.py` (login-page check), `scripts/live_campaign.py` (graded cases),
+   `scripts/live_agent.py` (one `SeedMutator` turn), `scripts/probe_models.py` or `scripts/live_judge.py` (provider
+   calls). Each reserves in the shared ledger before it sends and refuses past the $5 ceiling.
+
+Provider-side spend limits (E-6) are still not attested: `config/spend_limits.yaml` has no entry, and an operator
+approval stands in for it during local testing. The shared OpenRouter key had exceeded its own provider limit
+earlier on 2026-10-19 and the first probe was refused with a 403. The key owner then raised the limit, and the
+later probe and Judge calls completed (see [MODEL_PROBE.md](Docs/MODEL_PROBE.md)). Raising the limit is not an
+attestation, so E-6 stays open and belongs to the key owner.
+
 ## Safety rules
 
 - Live requests are refused until the target is on `config/allowlist.yaml` through a reviewed change, a budget is
-  approved, and a provider-side spend limit is attested (`config/spend_limits.yaml`).
+  approved, and an operator approval or a provider-side spend limit attestation is present.
 - Never commit keys, passwords, tokens, `.env` files or real patient data. Fixtures are synthetic only.

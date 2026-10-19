@@ -1,5 +1,5 @@
 ##
-# Platform CI (P0 through P4). Lint, typecheck, tests with a coverage floor, security scan,
+# Platform CI (P0 through P5). Lint, typecheck, tests with a coverage floor, security scan,
 # secret scan, markdown link check and a workflow guard. No secrets, no model calls, no request to the target: every
 # test runs with sockets disabled.
 # Live and paid runs are never part of this workflow. Later checkpoints add jobs and never remove one (ROADMAP 6).
@@ -68,6 +68,12 @@ jobs:
 
     - name: Threat-model check (category IDs, attributes, OWASP rows, summary length)
       run: python scripts/check_threat_model.py
+
+    - name: Architecture check (summary length, agents, diagram, sections A to K, Built or Planned labels)
+      run: python scripts/check_architecture.py
+
+    - name: Architecture check tests
+      run: python -m pytest tests/test_check_architecture.py -q
 
     - name: Contract tests (producer and consumer, nested failures, migration)
       run: python -m pytest tests/test_contracts.py tests/test_contracts_nested.py tests/test_store.py -q
