@@ -23,4 +23,9 @@ class LoginRequest:
             raise ValueError("synthetic identity is incomplete")
         if self.username not in {"copilot_doc_a", "copilot_doc_b", "copilot_nurse", "copilot_front"}:
             raise ValueError("username is not a synthetic fixture user")
-        return {"authUser": self.username, "clearPass": self.password}
+        return {
+            "authUser": self.username,
+            "clearPass": self.password,
+            "languageChoice": "1",
+            "new_login_session_management": "1",
+        }

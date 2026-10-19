@@ -17,6 +17,7 @@ import json
 import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from uuid import uuid4
 from datetime import date
 from http.client import HTTPConnection, HTTPSConnection
 from urllib.parse import parse_qs, urlencode, urljoin, urlsplit
@@ -24,15 +25,19 @@ from urllib.parse import parse_qs, urlencode, urljoin, urlsplit
 from agentforge.evals.login import LoginRequest
 from agentforge.safety.allowlist import Allowlist
 from agentforge.safety.budget import Budget
-from agentforge.safety.chokepoint import LIVE_ENABLED, RefusedByChokepoint, Response, Transport, request
+from agentforge.safety.ledger import Ledger
+from agentforge.safety.chokepoint import LIVE_ENABLED, TARGET_PROVIDER, RefusedByChokepoint, Response, Transport, request
 from agentforge.safety.identity import LOGIN_PATH, IdentityMismatch, check_login_page
 from agentforge.safety.rate import RateCap
 from agentforge.safety.refusal_log import RefusalLog
+from agentforge.safety.operator_approval import OperatorApproval
 from agentforge.safety.spend_limits import Attestation
 
 # Relative to the site origin. Copied from the pinned public module, not invented.
 CHAT_PATH = "/interface/modules/custom_modules/oe-module-copilot/public/chat.php"
-DOCK_PATH = "/interface/modules/custom_modules/oe-module-copilot/public/dock.php"
+DOCK_PATH = "/interface/main/tabs/main.php"
+LOGIN_ACTION_PATH = "/interface/main/main_screen.php"
+SITE_ID = "default"
 DEMOGRAPHICS_PATH = "/interface/patient_file/summary/demographics.php"
 SESSION_PID_PATH = "/library/ajax/set_pt.php"
 _CSRF = re.compile(r"""data-csrf=["']([^"']+)["']""")
@@ -66,7 +71,7 @@ class TargetSession:
 
     @property
     def identity_url(self) -> str:
-        return urljoin(self.origin.rstrip("/") + "/", LOGIN_PATH.lstrip("/"))
+        return urljoin(self.origin.rstrip("/") + "/", LOGIN_PATH.lstrip("/")) + "?site=" + SITE_ID
 
 
 def parse_sse(body: bytes | str) -> dict[str, str]:
@@ -150,25 +155,40 @@ class SessionClient:
         allowlist: Allowlist,
         budget: Budget,
         attestations: list[Attestation],
-        provider: str,
+        approvals: list[OperatorApproval] | None = None,
+        provider: str = TARGET_PROVIDER,
+        spend_role: str = "target",
+        chat_reserve_usd: float | None = None,
         today: date,
         rate_cap: RateCap,
         refusal_log: RefusalLog | None = None,
         fake_transport: bool = False,
         patient_context: Callable[[TargetSession], bool] | None = None,
+        ledger: Ledger | None = None,
     ) -> None:
         self.origin = origin.rstrip("/")
         self.transport = transport
         self.allowlist = allowlist
         self.budget = budget
         self.attestations = attestations
+        self.approvals = approvals or []
+        if provider != TARGET_PROVIDER:
+            raise ValueError("a target session attests provider 'target', not a platform provider")
+        if spend_role not in ("target", "boundary"):
+            raise ValueError("target spend role must be target or boundary")
+        if chat_reserve_usd is not None and chat_reserve_usd <= 0:
+            raise ValueError("billable chat reservation must be positive")
         self.provider = provider
+        self.spend_role = spend_role
+        self.chat_reserve_usd = chat_reserve_usd
         self.today = today
         self.rate_cap = rate_cap
         self.refusal_log = refusal_log
         self.fake_transport = fake_transport
         # Only a caller-supplied verified workflow may confirm patient context. The default confirms nothing.
         self.patient_context = patient_context
+        self.ledger = ledger
+        self.last_target_call_id: str | None = None
         self.session = TargetSession(origin=self.origin)
 
     def _request(
@@ -178,6 +198,8 @@ class SessionClient:
         *,
         headers: dict[str, str] | None = None,
         body: bytes | str | None = None,
+        est_cost_usd: float = 0.0,
+        max_redirects: int = 0,
     ) -> Response:
         if not LIVE_ENABLED and not self.fake_transport:
             raise RefusedByChokepoint("live", "live use is disabled (LIVE_ENABLED is False)")
@@ -185,6 +207,8 @@ class SessionClient:
         merged = dict(headers or {})
         if self.session.cookie and "Cookie" not in merged:
             merged["Cookie"] = self.session.cookie
+        if isinstance(body, (bytes, bytearray)) and "Content-Length" not in merged:
+            merged["Content-Length"] = str(len(body))
         try:
             return request(
                 method,
@@ -193,14 +217,17 @@ class SessionClient:
                 allowlist=self.allowlist,
                 budget=self.budget,
                 attestations=self.attestations,
+                approvals=self.approvals,
                 provider=self.provider,
-                est_cost_usd=0.0,
+                est_cost_usd=est_cost_usd,
+                attack=self.spend_role != "boundary" and est_cost_usd <= 0,
                 today=self.today,
                 fake_transport=self.fake_transport,
                 rate_cap=self.rate_cap,
                 refusal_log=self.refusal_log,
                 headers=merged or None,
                 body=body,
+                max_redirects=max_redirects,
             )
         except RefusedByChokepoint:
             raise
@@ -209,31 +236,42 @@ class SessionClient:
 
     def verify_identity(self) -> None:
         """GET the login page and stop on a fingerprint mismatch or a redirect. No later call on failure."""
-        response = self._request("GET", self.session.identity_url)
+        response = self._request("GET", self.session.identity_url, est_cost_usd=0.0)
         check_login_page(response)
 
     def login(self, credentials: LoginRequest) -> None:
-        """POST the synthetic fixture form. The password is the body, never a log field."""
+        """POST the synthetic fixture form to the action named by the login page. The password is never logged."""
         form = urlencode(credentials.form_body())
+        action = urljoin(self.origin + "/", LOGIN_ACTION_PATH.lstrip("/")) + "?auth=login&site=" + SITE_ID
         response = self._request(
             "POST",
-            self.session.identity_url,
+            action,
             headers={"Content-Type": "application/x-www-form-urlencoded"},
             body=form,
+            max_redirects=0,
         )
         if response.status in (401, 403):
             raise SessionError("login refused")
         if response.status not in (200, 302, 303):
             raise SessionError(f"login status {response.status}")
-        cookie = _cookie(response)
-        if cookie:
-            self.session.cookie = cookie
+        _store_cookies(self.session, response)
+        if response.location and "token_main=" in response.location:
+            # tabs/main.php rejects a request that lacks the one-time token from this redirect.
+            landed = self._request("GET", urljoin(action, response.location))
+            _store_cookies(self.session, landed)
+            if landed.status == 200 and not landed.location:
+                self._store_dock(landed)
 
     def read_dock(self) -> None:
-        """Read data-csrf and data-endpoint. Does not set patient context."""
-        response = self._request("GET", urljoin(self.origin + "/", DOCK_PATH.lstrip("/")))
+        """Read data-csrf and data-endpoint. Uses the login landing page when it already contained them."""
+        if self.session.csrf and self.session.chat_url:
+            return
+        response = self._request("GET", urljoin(self.origin + "/", DOCK_PATH.lstrip("/")) + "?site=" + SITE_ID)
         if response.status != 200 or response.location:
             raise SessionError(f"dock status {response.status}")
+        self._store_dock(response)
+
+    def _store_dock(self, response: Response) -> None:
         csrf, endpoint = dock_markers(response.body.decode("utf-8"))
         self.session.csrf = csrf
         self.session.chat_url = urljoin(self.origin + "/", endpoint)
@@ -277,19 +315,26 @@ class SessionClient:
         self.session.patient_context_confirmed = confirmed
         return confirmed
 
-    def post_unauthenticated(self, url: str, body: bytes) -> Response:
+    def post_unauthenticated(self, url: str, body: str) -> Response:
         """POST with no cookie and no CSRF. Used only for the missing-authority case."""
         self.session.cookie = None
         self.session.csrf = None
         return self._request(
             "POST",
             url,
-            headers={"Content-Type": "application/json", "Accept": "text/event-stream"},
-            body=body,
+            headers={
+                "Content-Type": "application/json",
+                "Accept": "application/json, text/event-stream",
+                "User-Agent": "agentforge-eval",
+            },
+            body=body.encode("utf-8"),
         )
 
     def post_chat(self, question: str) -> ChatTurn:
         """POST one question. Requires CSRF and confirmed patient context. Does not retry 429 or 503."""
+        billable = self.spend_role == "target"
+        if billable and (self.chat_reserve_usd is None or self.chat_reserve_usd <= 0 or self.chat_reserve_usd > 0.25):
+            raise SessionError("billable chat requires a positive operator USD reservation of at most 0.25")
         if not self.session.patient_context_confirmed:
             raise SessionError("patient context is not confirmed; chat was not sent")
         if not self.session.csrf or not self.session.chat_url:
@@ -297,18 +342,35 @@ class SessionClient:
         payload: dict[str, str] = {"question": question}
         if self.session.conversation_id:
             payload["conversation_id"] = self.session.conversation_id
-        response = self._request(
-            "POST",
-            self.session.chat_url,
-            headers={
-                "Content-Type": "application/json",
-                "X-CSRF-Token": self.session.csrf,
-                "Accept": "text/event-stream",
-            },
-            body=json.dumps(payload),
-        )
-        if response.status in (429, 503):
+        reserve = self.chat_reserve_usd if billable and self.chat_reserve_usd is not None else 0.0
+        call_id = None
+        if billable and self.ledger is not None:
+            call_id = f"target-chat-{uuid4().hex[:12]}"
+            self.ledger.reserve(call_id, "target", reserve)
+        try:
+            response = self._request(
+                "POST",
+                self.session.chat_url,
+                headers={
+                    "Content-Type": "application/json",
+                    "X-CSRF-Token": self.session.csrf,
+                    "Accept": "text/event-stream",
+                },
+                body=json.dumps(payload),
+                est_cost_usd=reserve,
+            )
+        except Exception:
+            if call_id is not None and self.ledger is not None:
+                self.ledger.release(call_id)
+            raise
+        if response.status in (429, 503) or (billable and response.status == 400):
+            if call_id is not None and self.ledger is not None:
+                self.ledger.release(call_id)
+            self.budget.release(reserve, attack=False)
             raise SessionError(f"target returned {response.status}; not retried")
+        if call_id is not None and self.ledger is not None:
+            self.ledger.incur(call_id, reserve)
+            self.last_target_call_id = call_id
         events = parse_sse(response.body) if response.body else {}
         found = conversation_id_from(events)
         if found:
@@ -319,15 +381,15 @@ class SessionClient:
 def verify_demographics_query(url: str, pid: str) -> None:
     """The demographics GET may contain only set_pid, and that value must be the operator pid."""
     parts = urlsplit(url)
-    if parts.path != DEMOGRAPHICS_PATH or _single_query(parts.query) != {"set_pid": pid}:
+    if parts.path != DEMOGRAPHICS_PATH or _single_query(parts.query) != {"set_pid": pid, "site": SITE_ID}:
         raise SessionError("demographics GET did not contain the exact operator pid")
 
 
 def patient_open_urls(origin: str, pid: str, csrf: str) -> tuple[str, str, dict[str, str]]:
     """Pinned patient-open requests. The read-back body is read-only and has no set_pid writer."""
-    demographics = _checked_url(origin, DEMOGRAPHICS_PATH, {"set_pid": pid})
+    demographics = _checked_url(origin, DEMOGRAPHICS_PATH, {"set_pid": pid, "site": SITE_ID})
     body = {"mode": "session_key", "key": "pid"}
-    readback = _checked_url(origin, SESSION_PID_PATH, {"csrf_token_form": csrf})
+    readback = _checked_url(origin, SESSION_PID_PATH, {"csrf_token_form": csrf, "site": SITE_ID})
     _reject_set_pid_writer(readback, body)
     return demographics, readback, body
 
@@ -353,7 +415,7 @@ def _reject_set_pid_writer(url: str, body: dict[str, str]) -> None:
     query = _single_query(urlsplit(url).query)
     if "set_pid" in query or "set_pid" in body:
         raise SessionError("session pid read-back must not send set_pid")
-    if query.keys() != {"csrf_token_form"} or body != {"mode": "session_key", "key": "pid"}:
+    if query != {"csrf_token_form": query.get("csrf_token_form", ""), "site": SITE_ID} or body != {"mode": "session_key", "key": "pid"}:
         raise SessionError("session pid read-back parameters were not the pinned read-only pair")
 
 
@@ -364,18 +426,37 @@ def _session_pid_matches(body: bytes, pid: str) -> bool:
     Quotes are from js_escape.
     """
     try:
-        echoed = json.loads(body.decode("utf-8"))
-    except (UnicodeError, json.JSONDecodeError):
+        text = body.decode("utf-8").strip()
+    except UnicodeError:
         return False
-    return bool(echoed == pid)
+    # set_pt.php echoes the current pid through text(js_escape()). A quoted JSON string and the bare pid both match.
+    return text == pid or text == json.dumps(pid)
 
 
-def _cookie(response: Response) -> str | None:
+def _cookie_pairs(response: Response) -> tuple[tuple[str, str], ...]:
+    """Every Set-Cookie name and value. A later pair for the same name replaces the earlier one."""
     headers = response.headers or {}
+    pairs: list[tuple[str, str]] = []
     for key, value in headers.items():
-        if key.lower() == "set-cookie":
-            return value.split(";", 1)[0]
-    return None
+        if key.lower() != "set-cookie":
+            continue
+        for cookie in value.splitlines():
+            pair = cookie.split(";", 1)[0].strip()
+            if "=" not in pair:
+                continue
+            name, cookie_value = pair.split("=", 1)
+            if name.strip():
+                pairs.append((name.strip(), cookie_value.strip()))
+    return tuple(pairs)
+
+
+def _store_cookies(session: TargetSession, response: Response) -> None:
+    pairs = _cookie_pairs(response)
+    if not pairs:
+        return
+    current = dict(part.split("=", 1) for part in session.cookie.split("; ") if "=" in part) if session.cookie else {}
+    current.update(dict(pairs))
+    session.cookie = "; ".join(f"{name}={value}" for name, value in current.items())
 
 
 _CONNECT_TIMEOUT = 10.0
@@ -405,7 +486,10 @@ def real_transport(
     path = parts.path or "/"
     if parts.query:
         path = path + "?" + parts.query
-    payload = body.encode("utf-8") if isinstance(body, str) else body
+    payload = body if isinstance(body, bytes) or body is None else body.encode("utf-8")
+    sent_headers = dict(headers or {})
+    if isinstance(payload, (bytes, bytearray)) and "Content-Length" not in sent_headers:
+        sent_headers["Content-Length"] = str(len(payload))
     port = parts.port if parts.port is not None else (443 if parts.scheme == "https" else 80)
     connect = (
         connection_opener
@@ -414,9 +498,14 @@ def real_transport(
     )
     conn = connect(parts.hostname, port, timeout=timeout)
     try:
-        conn.request(method, path, body=payload, headers=headers or {})
+        conn.request(method, path, body=payload, headers=sent_headers)
         res = conn.getresponse()
         location = res.getheader("Location") if res.status in _REDIRECTS else None
-        return Response(status=res.status, body=res.read(), location=location, headers=dict(res.getheaders()))
+        headers = dict(res.getheaders())
+        cookies = res.getheaders()
+        values = [value for key, value in cookies if key.lower() == "set-cookie"]
+        if values:
+            headers["Set-Cookie"] = "\n".join(values)
+        return Response(status=res.status, body=res.read(), location=location, headers=headers)
     finally:
         conn.close()

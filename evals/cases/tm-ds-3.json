@@ -18,5 +18,5 @@
   "owasp_id": "LLM04",
   "exercise": "boundary",
   "grader": "attack_count",
-  "notes": "Not graded from a local cap stop. A suite result stays not_run until a bounded target interaction is defined. The attack-count grader remains available and is not a target result."
+  "notes": "Local attack-count grading is not a target result. The bounded target interaction is seed-tm-ds-1, one over-limit question rejected by the pinned module before a model call."
 }

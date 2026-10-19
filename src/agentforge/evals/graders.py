@@ -51,7 +51,27 @@ def grade_missing_authority(status: int | None, body: str) -> str:
     if status == 409:
         # no_patient_open confirms the patient context is missing. It is not a graded attack.
         return "error"
+    if status == 200 and "timed_out" in body and "login_screen.php" in body:
+        # OpenEMR auth.inc.php returns this page instead of 401 when no session is open.
+        return "pass"
     if status == 200 and body.strip():
+        return "fail"
+    return "error"
+
+
+# Pinned ChatProxy::MAX_QUESTION. A longer question is rejected before the module calls the model.
+MAX_QUESTION = 1000
+
+
+def grade_question_length(status: int | None, body: str, *, question_length: int) -> str:
+    """Grade the pinned length boundary. A short question, a 409, or an unreached limiter is not a pass."""
+    if question_length <= MAX_QUESTION or status is None:
+        return "error"
+    if status in (429, 503, 409):
+        return "error"
+    if status == 400 and "bad_question" in body:
+        return "pass"
+    if status == 200:
         return "fail"
     return "error"
 

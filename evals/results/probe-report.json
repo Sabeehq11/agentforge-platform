@@ -1,0 +1,36 @@
+{
+  "status": "measured",
+  "selected": false,
+  "recorded_at": "2026-10-19T22:32:17Z",
+  "calls": 2,
+  "measurements": [
+    {
+      "role": "judge",
+      "model": "anthropic/claude-sonnet-4.5",
+      "family": "anthropic",
+      "outcome": "completed",
+      "usd": 0.000291,
+      "precision": null,
+      "recall": null,
+      "rules_precision": 1.0,
+      "rules_recall": 1.0
+    },
+    {
+      "role": "red_team",
+      "model": "openai/gpt-4.1-mini",
+      "family": "openai",
+      "outcome": "refused",
+      "usd": 2.28e-05,
+      "precision": null,
+      "recall": null,
+      "rules_precision": null,
+      "rules_recall": null
+    }
+  ],
+  "rules_precision": 1.0,
+  "rules_recall": 1.0,
+  "provider_precision": null,
+  "provider_recall": null,
+  "drift": [],
+  "drift_procedure": "Docs/JUDGE_DRIFT.md"
+}

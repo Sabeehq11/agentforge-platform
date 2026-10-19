@@ -1,0 +1,13 @@
+{
+  "status": "stopped",
+  "selected": false,
+  "source": "provider",
+  "model": "anthropic/claude-sonnet-4.5",
+  "calls": 1,
+  "provider_precision": null,
+  "provider_recall": null,
+  "baseline_rewritten": false,
+  "models_rewritten": false,
+  "recorded_at": "2026-10-19T19:07:00Z",
+  "error": "OpenRouterError: language model returned an unusable response"
+}

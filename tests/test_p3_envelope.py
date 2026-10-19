@@ -22,7 +22,7 @@ SECRET = "test-secret-not-a-real-credential"
 TODAY = date(2026, 10, 20)
 URL = "https://target.example/interface/login/login.php"
 CAPS = Caps(1.0, 2.0, 5, 5.0, 10.0)
-ATT = [Attestation("openrouter", "k1", 10.0, "someone", date(2026, 10, 17))]
+ATT = [Attestation("target", "target-key", 10.0, "someone", date(2026, 10, 17))]
 
 
 class Spy:
@@ -51,7 +51,7 @@ def call(spy: Spy, **over: object) -> Response:
         allowlist=allow(),
         budget=good_budget(),
         attestations=ATT,
-        provider="openrouter",
+        provider="target",
         est_cost_usd=0.05,
         today=TODAY,
         fake_transport=True,
@@ -92,7 +92,7 @@ def test_refusal_log_omits_cookie_csrf_and_body(tmp_path: Path) -> None:
             allowlist=allow(),
             budget=good_budget(),
             attestations=ATT,
-            provider="openrouter",
+            provider="target",
             est_cost_usd=0.05,
             today=TODAY,
             fake_transport=True,
@@ -315,7 +315,7 @@ def test_request_refuses_gates_before_real_transport_socket(monkeypatch: pytest.
             allowlist=allow(),
             budget=good_budget(),
             attestations=ATT,
-            provider="openrouter",
+            provider="target",
             est_cost_usd=0.05,
             today=TODAY,
             fake_transport=False,
@@ -339,6 +339,39 @@ def test_request_refuses_gates_before_real_transport_socket(monkeypatch: pytest.
         call(Spy(), transport=transport, attestations=[], fake_transport=True)
     assert missing.value.gate == "spend_limit"
     assert opened == []
+
+
+def test_identity_get_does_not_need_a_model_key_attestation(monkeypatch: pytest.MonkeyPatch) -> None:
+    from agentforge.evals.session import SessionClient
+    from agentforge.safety.chokepoint import LIVE_ENABLED
+
+    calls: list[str] = []
+
+    def transport(method: str, url: str, headers: dict[str, str] | None = None, body: bytes | str | None = None) -> Response:
+        calls.append(method + " " + url)
+        return Response(200, b"OpenEMR login")
+
+    client = SessionClient(
+        "https://target.example",
+        transport=transport,
+        allowlist=Allowlist((Entry("https", "target.example", 443, "/"),)),
+        budget=good_budget(),
+        attestations=[],
+        today=TODAY,
+        rate_cap=RateCap(1),
+        fake_transport=True,
+    )
+    client.verify_identity()
+    assert calls == ["GET https://target.example/interface/login/login.php?site=default"]
+    client.session.patient_context_confirmed = True
+    client.session.csrf = "csrf-test"
+    client.session.chat_url = "https://target.example/chat.php"
+    client.chat_reserve_usd = 0.05
+    with pytest.raises(RefusedByChokepoint) as caught:
+        client.post_chat("synthetic")
+    assert caught.value.gate == "spend_limit"
+    assert len(calls) == 1
+    assert LIVE_ENABLED is False
 
 
 def test_identity_runner_refuses_live_before_socket(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -369,7 +402,6 @@ def test_identity_runner_refuses_live_before_socket(tmp_path: Path, monkeypatch:
             token=approval_token(caps, SECRET),
             secret=SECRET,
             origin="https://target.example",
-            provider="openrouter",
         )
     assert caught.value.gate == "live"
 

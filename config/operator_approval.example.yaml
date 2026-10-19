@@ -1,0 +1,9 @@
+# Copy to config/operator_approval.yaml. That file is gitignored. This is not a provider attestation.
+# max_usd must be 5.0. A missing, stale, wrong-scope, or other amount refuses billable use.
+#
+#   - approved_by: operator-name
+#     approved_on: 2026-10-19
+#     scope: local-target
+#     max_usd: 5.0
+#     purpose: local-p4
+approvals: []

@@ -2,13 +2,13 @@
 # red_team and judge must have different `family` values; src/agentforge/models_config.py enforces it.
 roles:
   red_team:
-    provider: TBD
-    model: TBD
-    family: tbd-attacker
+    provider: openrouter
+    model: openai/gpt-4.1-mini
+    family: openai
   judge:
-    provider: TBD
-    model: TBD
-    family: tbd-judge
+    provider: openrouter
+    model: anthropic/claude-sonnet-4.5
+    family: anthropic
   orchestrator:
     provider: TBD
     model: TBD

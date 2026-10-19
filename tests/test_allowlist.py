@@ -15,11 +15,13 @@ def al() -> Allowlist:
     return Allowlist((OK,))
 
 
-def test_shipped_config_denies_everything() -> None:
+def test_shipped_config_allows_only_the_reviewed_host() -> None:
     a = Allowlist.from_file(ROOT / "config" / "allowlist.yaml")
-    assert a.entries == ()
-    d = a.check("https://target.example/app")
-    assert not d.allowed and "default deny" in d.reason
+    assert a.entries == (Entry("http", "127.0.0.1", 8300, "/"),)
+    assert a.check("http://127.0.0.1:8300/interface/login/login.php").allowed
+    assert not a.check("https://accessed-supply-sen-boc.trycloudflare.com/interface/login/login.php").allowed
+    denied = a.check("https://target.example/app")
+    assert not denied.allowed
 
 
 def test_missing_file_denies(tmp_path: Path) -> None:

@@ -20,13 +20,21 @@ from .allowlist import Allowlist
 from .budget import Budget
 from .rate import RateCap, RateCapExceeded
 from .refusal_log import RefusalLog
-from .spend_limits import Attestation, require_attested
+from .operator_approval import OperatorApproval, authorize_spend
+from .spend_limits import Attestation
 
 # Authoritative kill switch. Reviewed source change required to enable a live transport. Not an env flag.
 LIVE_ENABLED = False
 
+# Provider-only switch. It authorizes OpenRouter calls and cannot authorize a target request.
+PROVIDER_ENABLED = False
+
+# Target requests attest this provider. An OpenRouter attestation does not satisfy it, and this name cannot
+# authorize an OpenRouter call.
+TARGET_PROVIDER = "target"
+
 # Names that must not be consulted. Present so a later edit that reads them is obvious in review.
-_IGNORED_ENV = ("AGENTFORGE_LIVE", "LIVE_ENABLED", "AGENTFORGE_LIVE_ENABLED")
+_IGNORED_ENV = ("AGENTFORGE_LIVE", "LIVE_ENABLED", "AGENTFORGE_LIVE_ENABLED", "PROVIDER_ENABLED", "AGENTFORGE_PROVIDER_ENABLED")
 
 
 class RefusedByChokepoint(Exception):
@@ -57,7 +65,9 @@ def request(
     budget: Budget,
     attestations: list[Attestation],
     provider: str,
+    approvals: list[OperatorApproval] | None = None,
     est_cost_usd: float,
+    attack: bool = True,
     today: date,
     max_redirects: int = 0,
     fake_transport: bool = False,
@@ -88,14 +98,17 @@ def request(
         raise refuse("allowlist", decision.reason)
 
     try:
-        budget.reserve(est_cost_usd)
+        budget.reserve(est_cost_usd, attack=attack)
     except Exception as exc:  # BudgetError subclasses; kept generic so any budget failure stops the call
         raise refuse("budget", str(exc)) from exc
 
-    try:
-        require_attested(provider, attestations, today=today)
-    except Exception as exc:
-        raise refuse("spend_limit", str(exc)) from exc
+    # A zero-cost request cannot bill a model key. A positive estimate needs either a dashboard
+    # attestation or a fresh operator approval for this provider. Neither file is written here.
+    if est_cost_usd > 0:
+        try:
+            authorize_spend(provider, attestations=attestations, approvals=approvals or [], today=today)
+        except Exception as exc:
+            raise refuse("spend_limit", str(exc)) from exc
 
     if rate_cap is not None:
         try:

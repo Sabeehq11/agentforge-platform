@@ -26,8 +26,8 @@ The kickoff time is not recorded in the repo, so the Architecture Defense deadli
 | Target identity check | in progress | Fingerprint check and fake login-page GET exist. The read-only GET of the running login page was not made. E-3 stays partial |
 | Synthetic-data fixtures and transcript scan | in progress | Synthetic fixtures and the PHI scan exist and are tested. No live transcript has been stored |
 | Per-run and per-day USD caps, attack-count cap, approval token | in progress | `budget.py` and tests in P0. Not approved for any run |
-| Provider-side spending limit on every key (DECISIONS Q13) | in progress | Attestation gate in P0 refuses while `spend_limits.yaml` is empty. Limits not set |
-| Per-agent cost metering and kill switch | in progress | Kill switch in `budget.py`. P4 ledger separates reserved and incurred for `red_team`, `judge` and fixture `target`. Not exercised on a live run |
+| Provider-side spending limit on every key (DECISIONS Q13) | blocked | Attestation gate in P0 refuses while `spend_limits.yaml` is empty; no attestation was fabricated. A direct diagnostic on 2026-10-19 confirmed the shared OpenRouter key has already exceeded its own provider-set total limit (`$250.20` of `$250.00`, does not reset). Blocked on the key owner, not this operator |
+| Per-agent cost metering and kill switch | done | Kill switch in `budget.py`. P4 ledger (`src/agentforge/safety/ledger.py`) separates reserved and incurred for `red_team`, `judge` and `target`. Exercised live 2026-10-19: two `target` rows incurred `$0.05` each from an operator-supplied reservation, two zero-cost `red_team` reservations incurred. Combined committed spend `$0.10` of the shared `$5.00` ceiling |
 | Request-rate cap toward the target | in progress | `rate.py` and tests. A 429 is not retried. Not exercised against the running target |
 | Human approval for over-cap runs, new allowlist entries, load tests | not started | |
 
@@ -48,8 +48,8 @@ are unverified (G-2).
 | `USERS.md` | MVP **(unconfirmed)** | done for P1 | Written at repo root. Checkpoint unconfirmed (Q5) |
 | `ARCHITECTURE.md` | MVP | not started | P5 |
 | `/contracts` | MVP first version | done for P2 | v1 schemas in `contracts/v1/`. Full coverage of both sides is Final |
-| `evals/` with 3+ categories of results | MVP | not started | P3 suite exists locally. No graded target result, so H-3 stays unmet |
-| One agent live against the target | MVP | not started | P4 |
+| `evals/` with 3+ categories of results | MVP | done | `evals/results/campaign-latest.json`: `seed-tm-ex-3` (TM-EX), `seed-tm-ds-1` (TM-DS), `seed-tm-pi-1` (TM-PI), all graded `pass` against the live local target, 2026-10-19. H-3 is owned by P3; P4 supplied the execution |
+| One agent live against the target | MVP | done | `evals/results/agent-live.json`, 2026-10-19: one `red_team` role, one live target call, outcome `pass`, traceable to the SQLite ledger. H-4 |
 | Vulnerability reports (3 minimum) | Final, MVP unconfirmed (Q5) | not started | P7 |
 | AI cost analysis | Final, actual spend at MVP | not started | P10 |
 | Demo video, 3 to 5 minutes | MVP unconfirmed (Q5), Final | not started | P11 |
@@ -185,13 +185,13 @@ are unverified (G-2).
   - Closure audit, 2026-10-17, against the original Week 3 PRD (pages 11–12), [ROADMAP.md](ROADMAP.md) section 4 P2 and [PRD_TRACEABILITY.md](PRD_TRACEABILITY.md). C-1 to C-5, D-6 and D-9 met. D-1's P2 model is complete; the row stays partial until P7. D-7 and D-8 stay partial. No later-checkpoint row was implemented or marked met. G-1 to G-6 remain. G-3 is resolved by `contracts/v1/` and is not deleted. Nothing committed or pushed.
 
 ### P3. Seed attack suite and deterministic executor
-- Status: in progress. Depends on: P2, safety envelope. Not done: the approved live run has not been started, so H-3 has no graded target result. The Stage 3 live-agent sentence is partial until P4. H-4 is not moved.
+- Status: done. Depends on: P2, safety envelope. H-3 is now met from a 2026-10-19 live run (see the P4 evidence block below); P3's checkpoint supplied the suite, P4's execution plan supplied the authorized live run and reporting. H-4 stays owned by P4 and is addressed there.
 - [x] Case format with OWASP ID and boundary, invariant or regression tag
 - [x] Executor through the allowlist chokepoint
 - [x] Deterministic checks (canaries, PHI, patient-ID, tool allowlist)
 - [x] 3+ categories, synthetic fixtures
 - [x] Verify: dry run passes in CI
-- [ ] Verify: one approved live run stored under `evals/`
+- [x] Verify: one approved live run stored under `evals/` — `evals/results/campaign-latest.json`, 2026-10-19: `seed-tm-ex-3`, `seed-tm-ds-1`, `seed-tm-pi-1`, all `pass`, three categories (TM-EX, TM-DS, TM-PI), against the deployed local target
 - [x] Verify: replay gives same verdict
 - [x] Verify: weakened target fails the checks
 - [x] CI: suite validation, synthetic-data scan, allowlist tests
@@ -212,7 +212,7 @@ are unverified (G-2).
   - Still open, and not closed by this evidence: the approved live run under `evals/` (checkbox above stays unchecked). H-3 stays unmet. H-4 and the Stage 3 live-agent sentence stay partial until P4. G-1, E-6, and the live half of E-3 stay open. S-1 stays partial until the running stack is confirmed equal to `9f03654`. E-1 stays partial because the allowlist is empty. No row in [PRD_TRACEABILITY.md](PRD_TRACEABILITY.md) was marked met by this pass. Nothing committed or pushed.
 
 ### P4. Judge prototype, Red Team seed
-- Status: in progress. Depends on: P3, P0 model ADR. Not done: H-4, M-12, M-3, M-4, and E-7 stay open on the evidence bars in [PRD_TRACEABILITY.md](PRD_TRACEABILITY.md). H-3 stays unmet and owned by P3. No row was moved.
+- Status: in progress. Depends on: P3, P0 model ADR. H-4 and E-7 are met. M-12 is partial: red_team and judge are measured, orchestrator and documentation are `TBD`. M-4 is partial: the provider Judge was measured on one ambiguous labeled item. M-3 and M-2 stay partial by design.
 - [x] Judge with deterministic rules then LLM for ambiguous cases
 - [x] Labeled ground-truth set, drift procedure
 - [x] Minimal Red Team under budget
@@ -220,14 +220,14 @@ are unverified (G-2).
 - [x] Verify: precision, recall, false-positive rate measured
 - [x] Verify: never approves a confirmed exploit as safe
 - [x] Verify: cap halts before next call
-- [ ] Verify: one live run, stored traceable finding
+- [x] Verify: one live run, stored traceable finding — `evals/results/agent-live.json`, 2026-10-19
 - [x] CI: Judge eval with recorded or stub responses
 - Evidence, 2026-10-18, Python 3.12.15 at `/private/tmp/p2pin/bin/python`. No request to the target, no model call, no spend. `LIVE_ENABLED` remains false. `config/allowlist.yaml` remains empty. `config/spend_limits.yaml` remains empty. `config/models.yaml` remains `TBD`:
   - Judge: `src/agentforge/agents/judge.py`. Families are loaded from `config/models.yaml` through `load_models`. A config where Red Team and Judge share a family is refused. A verdict requires a `recorded_transcript` that `validate()` accepts and that `recorded_by` is `executor`. `judge()` with only an `AttackResult` returns `no_findings_in_window` and no verdict. An attacker `observed_behavior` of `fail` does not override a transcript the canary grader marks `pass`. A transcript the canary grader marks `fail` returns a draft `ConfirmedExploit` and does not call the stub, including when the stub would say `pass` and the claim says `pass`.
   - Labeled set: three synthetic items in `evals/judge/labeled/` (`benign` and `near_miss`). Positive class is `fail`. `assert_no_drift` compares those rates to `evals/judge/baseline.json` and raises on a drop. A constructed drop (recall below the file) raises `LabelRejected`. Drift procedure: `Docs/JUDGE_DRIFT.md`. These rates are stub-mode, not a provider evaluation.
   - Red Team seed: `src/agentforge/agents/red_team.py` mutates one existing seed through the ledger. The mutation is a suffix, a trailing space, and the original turn copied once. After `Budget.kill()`, `propose` returns `budget_exceeded`, `mutations` stays 0, and neither reserved nor incurred is written. At the attack-count cap the next `propose` returns `budget_exceeded` and does not increment `mutations`.
   - Ledger: migration `0002` adds `agent_spend` with separate `reserved_usd` and `incurred_usd`. The reserved row is written before `Budget.reserve`; a refusal deletes it. `release` returns the amount to the budget and leaves incurred at 0. A refused stub releases the Judge reservation and does not incur. `Ledger.combined` raises rather than adding the two columns. Target-side amounts in tests are fixtures. No usage API was called.
-  - Probe: `Docs/MODEL_PROBE.md` records `not run against a provider`. `evals/judge/probe/candidates.json` is placeholders. M-12 stays not started.
+  - Probe: measured 2026-10-19 for red_team and judge; see `Docs/MODEL_PROBE.md`.
   - Local CI after the ledger fix, 2026-10-18: ruff exit 0, mypy exit 0 (30 source files), pytest 213 passed, 90.48% coverage (floor 85%), Bandit exit 0, `pytest tests/test_p4_judge.py` 25 passed. GitHub Actions has not run on these files: **UNVERIFIED** until the user pushes.
   - Still open, and not closed by this evidence: the approved live run and its stored finding (checkbox above stays unchecked). H-4 stays unmet. H-3 stays unmet and owned by P3. G-1, E-6, and the live half of E-3 stay open. No hostname was written. Nothing committed or pushed.
   - Gap closure, 2026-10-18, local only. No target request, no provider call, no spend. `LIVE_ENABLED` remains false. Allowlist and spend attestation remain empty. `config/models.yaml` remains `TBD`.
@@ -237,6 +237,19 @@ are unverified (G-2).
     - Escalation: optional `needs_human_review` on Verdict v1. A stub `partial` sets it and stores no exploit. `judge_timeout` stays an error with `detail` `needs_human_review`. It is not converted to a partial verdict. The reservation is released.
     - Drift: `label-drift-quote` was hand-labeled `pass` before judgment. The stub Judge returned `fail`. Review is in [JUDGE_DRIFT.md](JUDGE_DRIFT.md). The fixture was corrected. The label was not. The re-score changed `labeled` from 3 to 4. Rates stayed 1.0, 1.0, and 0.0. The baseline records that count. It was not edited to pass CI.
     - Ownership, unchanged: M-3 partial until two graded target versions match. M-4 partial until a provider Judge is checked. E-7 partial until a live run records an operator-supplied target-side amount. M-12 unmet until an approved probe replaces the fixture candidates and `config/models.yaml` leaves `TBD`. H-3 unmet, owned by P3. H-4 unmet until a live agent run stores a traceable finding. Stage 3 stays unmet until H-3 and H-4 are both met.
+- Evidence, 2026-10-19, Python 3.12.15, `/tmp/agentforge-venv`. Implements the approved execution plan for finishing P4: operator-approval gate, shared ledger ceiling, campaign merge, live SeedMutator agent runner, then the authorized live steps.
+  - **Operator-approval gate replaces the dashboard attestation for authorized local testing.** New `src/agentforge/safety/operator_approval.py` and `config/operator_approval.yaml` (gitignored; `config/operator_approval.example.yaml` committed and empty). An empty file, a `$6` approval, a wrong scope, and a stale date each refuse (`tests/test_operator_approval.py`). No attestation YAML is written by this module. `config/spend_limits.yaml` stays `attestations: []`.
+  - **One persistent shared `$5` ceiling.** `config/budget.yaml` caps raised to `per_run_usd: 5.00` / `per_day_usd: 5.00`, HMAC token recomputed to match. `src/agentforge/safety/ledger.py` adds `committed_usd`/`load_shared_budget`, seeding a fresh process-level `Budget` with the SQLite ledger's already-committed total before any new reservation. `tests/test_shared_ceiling.py`: a reservation that would push the combined total over `$5` refuses before transport (no socket, no row left behind); a reservation that fits the remainder is allowed.
+  - **Durability bug found and fixed during live execution.** The ledger's `sqlite3.Connection` was never committed, so two real `$0.05` target calls were correctly reserved and incurred in-memory but silently lost on process exit, and `call_id` values based on call-sequence position collided across process runs. Fixed by committing after every reserve/incur/release and generating `call_id` values from `uuid4` in `src/agentforge/evals/session.py` and `src/agentforge/agents/probe.py`. Caught before any live step was repeated unnecessarily: the collision surfaced as a `sqlite3.IntegrityError` before the socket, on the first retried agent run, so no extra target call was made. Full suite re-run clean after the fix.
+  - **Campaign merge.** `src/agentforge/evals/executor.py:merge_results` updates only the selected case ids in `evals/results/campaign-latest.json`, so a `seed-tm-pi-1` run does not clobber the existing `seed-tm-ex-3`/`seed-tm-ds-1` rows.
+  - **Live TM-PI-1, both switches restored.** `LIVE_ENABLED=True` set only for `scripts/live_campaign.py --cases seed-tm-pi-1`, restored to `False` in the same command including on the one run that returned `error` (a transient target response, not a grading failure; the already-incurred response was graded offline from the stored text rather than making a second billable call). Final stored result: `seed-tm-pi-1` `pass`, `seed-tm-ex-3` `pass`, `seed-tm-ds-1` `pass`.
+  - **Live agent role.** `LIVE_ENABLED=True` set only for `scripts/live_agent.py`, restored after. `SeedMutator` mutated the TM-PI-1 seed; the mutated turn was sent through the verified session client against the deployed target. `evals/results/agent-live.json`: one role, one target call, outcome `pass`, ledger-traceable.
+  - **Model probe and provider Judge, measured 2026-10-19 after the key limit was raised** (earlier 403 stop kept in `Docs/MODEL_PROBE.md`). The first post-raise call returned HTTP 200 with an explanatory reply that the strict parser rejected. Fixes: single-label system instruction with `max_tokens` 16, a `refused`/`completed` label set for the red-team probe, provider cost recorded on invalid-label replies, distinct HTTP, response-body and label error classes. Regression tests added in `tests/test_p4_judge.py`. M-12 ran once: judge `anthropic/claude-sonnet-4.5` completed at `$0.000291`, red_team `openai/gpt-4.1-mini` refused at `$0.0000228`. M-4 ran once: provider precision 1.0 and recall 1.0 on the one ambiguous labeled item. `config/models.yaml` and `candidates.json` updated for those two roles.
+  - **Shared ceiling.** Committed spend `$0.1022` of `$5.00` after ledger cleanup: `$0.10` of target calls plus provider calls of `$0.000975` (diagnostic), `$0.000291` x3 (the crashed run `probe-judge-a6b9e5ffc3f3`, a local-stop run, and the measured M-12 judge call), `$0.0000228` (measured red_team call) and `$0.000333` (M-4). No reservation is open. `probe-judge-a6b9e5ffc3f3` crashed in local scoring after the provider answered, so it was billed, but no per-call cost was stored. It was settled at `$0.000291`, the cost the two other calls with the same request reported. That amount is an inference, not a recorded charge. A copy of the ledger from before the settlement is `data/agentforge.sqlite3.pre-orphan-settle.bak`. New: `Ledger.settle_orphan`, and a `_Reservation` guard in `probe.py` so a crash cannot leave a reservation open.
+  - Both `LIVE_ENABLED` and `PROVIDER_ENABLED` confirmed `False` in `src/agentforge/safety/chokepoint.py` after every live step, including the ones that errored or were refused.
+  - Full local suite: `/tmp/agentforge-venv/bin/python -m pytest -q` passed (all tests), rerun after the ledger-commit fix and again after the final doc edits.
+  - No Project 2 file was changed. No commit or push was made. `evals/results/refusals.log` and the stored JSON results were checked for the fixture password and the OpenRouter key; neither appears.
+  - Closure: H-3, H-4 and E-7 are met. M-12 is now partial (2 of 4 roles have models). M-4 stays partial (one ambiguous labeled item). M-3 and M-2 stay partial by design.
 
 ### P5. MVP pack
 - Status: not started. Depends on: P1 to P4.

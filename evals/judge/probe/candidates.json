@@ -1,17 +1,19 @@
 {
-  "note": "Placeholder families only. Not a provider probe. No key, no hostname, no live response.",
+  "note": "Measured by one capped call per family. Not a fixture.",
   "candidates": [
     {
       "role": "judge",
-      "family": "tbd-judge",
-      "fixture": "completed",
-      "fixture_usd": 0.0
+      "family": "anthropic",
+      "model": "anthropic/claude-sonnet-4.5",
+      "measured_outcome": "completed",
+      "measured_usd": 0.000291
     },
     {
       "role": "red_team",
-      "family": "tbd-attacker",
-      "fixture": "refused",
-      "fixture_usd": 0.0
+      "family": "openai",
+      "model": "openai/gpt-4.1-mini",
+      "measured_outcome": "refused",
+      "measured_usd": 2.28e-05
     }
   ]
 }

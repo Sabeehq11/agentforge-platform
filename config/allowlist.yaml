@@ -1,4 +1,4 @@
-# Target allowlist. Default deny. P0 ships with NO hosts, so every request is refused.
+# Target allowlist. Default deny. One reviewed host does not allow any other host.
 #
 # Adding an entry is a reviewed change (see .github/CODEOWNERS), never automatic. The Cloudflare quick tunnel
 # hostname rotates (ADR-007), so each new URL is a deliberate edit. Wildcards are not supported.
@@ -8,4 +8,8 @@
 #     host: example-host.trycloudflare.com
 #     port: 443
 #     path_prefix: /
-entries: []
+entries:
+  - scheme: http
+    host: 127.0.0.1
+    port: 8300
+    path_prefix: /

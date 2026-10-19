@@ -15,7 +15,7 @@ SECRET = "test-secret-not-a-real-credential"
 TODAY = date(2026, 10, 20)
 URL = "https://target.example/app/x"
 CAPS = Caps(1.0, 2.0, 5, 5.0, 10.0)
-ATT = [Attestation("openrouter", "k1", 10.0, "someone", date(2026, 10, 17))]
+ATT = [Attestation("target", "target-key", 10.0, "someone", date(2026, 10, 17))]
 
 
 class Spy:
@@ -44,7 +44,7 @@ def call(spy: Spy, **over: object) -> Response:
         allowlist=allow(),
         budget=good_budget(),
         attestations=ATT,
-        provider="openrouter",
+        provider="target",
         est_cost_usd=0.05,
         today=TODAY,
         fake_transport=True,
@@ -113,6 +113,18 @@ def test_missing_attestation_denies_and_skips_transport() -> None:
     assert spy.calls == []
 
 
+def test_zero_cost_identity_get_skips_attestation_and_billable_does_not() -> None:
+    spy = Spy()
+    response = call(spy, est_cost_usd=0.0, attestations=[], attack=False)
+    assert response.status == 200
+    assert spy.calls == [("GET", URL)]
+    blocked = Spy()
+    with pytest.raises(RefusedByChokepoint) as caught:
+        call(blocked, est_cost_usd=0.05, attestations=[])
+    assert caught.value.gate == "spend_limit"
+    assert blocked.calls == []
+
+
 def test_gate_order_allowlist_before_budget_before_spend_limit() -> None:
     # Everything is wrong at once: the allowlist must be reported first, and no money may be reserved.
     b = Budget(CAPS)  # unapproved
@@ -160,7 +172,7 @@ def test_headers_and_body_reach_the_transport_only_after_the_gates() -> None:
         allowlist=allow(),
         budget=good_budget(),
         attestations=ATT,
-        provider="openrouter",
+        provider="target",
         est_cost_usd=0.05,
         today=TODAY,
         fake_transport=True,
@@ -177,7 +189,7 @@ def test_headers_and_body_reach_the_transport_only_after_the_gates() -> None:
             allowlist=Allowlist(),
             budget=good_budget(),
             attestations=ATT,
-            provider="openrouter",
+            provider="target",
             est_cost_usd=0.05,
             today=TODAY,
             fake_transport=True,

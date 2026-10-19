@@ -1,0 +1,12 @@
+{
+  "status": "measured",
+  "selected": false,
+  "source": "provider",
+  "model": "anthropic/claude-sonnet-4.5",
+  "calls": 1,
+  "provider_precision": 1.0,
+  "provider_recall": 1.0,
+  "baseline_rewritten": false,
+  "models_rewritten": false,
+  "recorded_at": "2026-10-19T22:32:27Z"
+}

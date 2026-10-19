@@ -1,0 +1,26 @@
+{
+  "status": "stopped",
+  "selected": false,
+  "recorded_at": "2026-10-19T22:20:23Z",
+  "calls": 1,
+  "measurements": [
+    {
+      "role": "judge",
+      "model": "anthropic/claude-sonnet-4.5",
+      "family": "anthropic",
+      "outcome": "error",
+      "usd": null,
+      "precision": null,
+      "recall": null,
+      "rules_precision": null,
+      "rules_recall": null
+    }
+  ],
+  "rules_precision": null,
+  "rules_recall": null,
+  "provider_precision": null,
+  "provider_recall": null,
+  "drift": [],
+  "drift_procedure": "Docs/JUDGE_DRIFT.md",
+  "error": "OpenRouterError: language model returned an unusable response"
+}

@@ -4,7 +4,9 @@ The verdict is derived from an independently recorded transcript that validate()
 fields observed_behavior, severity, exploitability and regression_flag are attacker claims. They are not read
 as evidence and are not copied into the verdict.
 
-No method here calls a provider or opens a socket. The only model implementation is a fixture stub.
+A decisive rule does not call a model. An ambiguous transcript uses the injected model, which is a fixture
+unless the caller supplies OpenRouterJudgeModel. This module does not construct a provider client and does
+not open a socket.
 """
 
 from __future__ import annotations
@@ -26,6 +28,7 @@ from agentforge.evals.graders import (
 )
 from agentforge.models_config import load_models
 from agentforge.safety.budget import BudgetError
+from agentforge.safety.chokepoint import RefusedByChokepoint
 from agentforge.safety.ledger import Ledger
 
 _CLAIMS = ("observed_behavior", "severity", "exploitability", "regression_flag")
@@ -241,6 +244,7 @@ class RulesJudge:
         stub: JudgeModel | None = None,
         canaries: dict[str, str] | None = None,
         reserve_usd: float = 0.0,
+        fixture_only: bool = False,
     ) -> None:
         roles = load_models(models_path)
         judge_model = roles["judge"]
@@ -254,6 +258,7 @@ class RulesJudge:
             raise ValueError("a ledger is required for every judge execution")
         self._ledger = ledger
         self._reserve_usd = reserve_usd
+        self._fixture_only = fixture_only
         self.model_calls = 0
         self.last_exploit: ConfirmedExploit | None = None
         self.last_call_id: str | None = None
@@ -302,12 +307,42 @@ class RulesJudge:
             return _envelope("budget_exceeded", result["correlation_id"], str(exc)[:500], retryable=False)
         self.last_call_id = call_id
         if decided is None:
+            from agentforge.safety.chokepoint import PROVIDER_ENABLED
+
+            model = self._stub
+            if type(model).__name__ == "StubJudgeModel" and PROVIDER_ENABLED and not self._fixture_only:
+                from agentforge.agents.openrouter import OpenRouterJudgeModel
+
+                model = OpenRouterJudgeModel(self._model.model)
             try:
                 self.model_calls += 1
-                label = self._stub.complete(recorded.transcript_id + "\n" + (target_text(recorded) or ""))
+                label = model.complete(recorded.transcript_id + "\n" + (target_text(recorded) or ""))
+                reported = getattr(model, "last_cost_usd", None)
+                if reported is not None and reported > self._reserve_usd:
+                    self._ledger.release(call_id)
+                    return _envelope(
+                        "budget_exceeded",
+                        result["correlation_id"],
+                        "provider-reported USD exceeds the reservation",
+                        retryable=False,
+                    )
             except JudgeTimeoutError:
                 self._ledger.release(call_id)
                 return _envelope("judge_timeout", result["correlation_id"], "needs_human_review", retryable=True)
+            except RefusedByChokepoint as exc:
+                self._ledger.release(call_id)
+                return _envelope("no_findings_in_window", result["correlation_id"], str(exc)[:500], retryable=False)
+            except Exception as exc:
+                from agentforge.agents.openrouter import OpenRouterError
+
+                billed = getattr(model, "last_cost_usd", None)
+                if isinstance(exc, OpenRouterError) and billed is not None and billed <= self._reserve_usd:
+                    self._ledger.incur(call_id, float(billed))
+                else:
+                    self._ledger.release(call_id)
+                if not isinstance(exc, OpenRouterError):
+                    raise
+                return _envelope("no_findings_in_window", result["correlation_id"], str(exc)[:500], retryable=False)
             if label not in ("pass", "fail", "partial"):
                 self._ledger.release(call_id)
                 return _envelope(
@@ -316,7 +351,11 @@ class RulesJudge:
                     "stub returned no usable label",
                     retryable=False,
                 )
-            self._ledger.incur(call_id, self._reserve_usd)
+            if type(model).__name__ == "StubJudgeModel" or reported is None:
+                incurred = self._reserve_usd
+            else:
+                incurred = float(reported)
+            self._ledger.incur(call_id, incurred)
             decided = label
         else:
             self._ledger.incur(call_id, self._reserve_usd)
