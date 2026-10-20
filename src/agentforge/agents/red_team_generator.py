@@ -288,6 +288,12 @@ class RedTeamGenerator:
                 attack, lowest = self._check(request, mode, text, refs, report)
             except OutputRejected as exc:
                 self._reject(request, exc.reason)
+                from agentforge.safety.content import record_rejection
+
+                row = self._journal.latest(request["correlation_id"], self._last_step)
+                if row is not None:
+                    record_rejection(self._conn, request["correlation_id"], row.call_id, "rejected_model_output")
+                    self._conn.commit()
                 rejected += 1
                 if rejected > limit:
                     raise GenerationStopped("rejections", f"{rejected} rejected outputs, last: {exc.reason}") from exc

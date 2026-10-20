@@ -15,6 +15,8 @@ from typing import Any
 from agentforge.contracts.messages import ConfirmedExploit
 from agentforge.contracts.validate import validate
 from agentforge.orchestrator.state import log_run, now_iso
+from agentforge.safety.content import require_storable_sequence
+from agentforge.store.access import Grant, require_grant
 from agentforge.safety.phi import require_clean
 from agentforge.store.records import CATEGORIES, SEVERITIES, IncompleteRecord, StoreError, sequence_hash
 
@@ -31,8 +33,15 @@ REQUIRED = (
 )
 
 
-def draft_report(conn: sqlite3.Connection, exploit: ConfirmedExploit, *, held: bool = False) -> str:
+def draft_report(
+    conn: sqlite3.Connection,
+    exploit: ConfirmedExploit,
+    grant: Grant | None = None,
+    *,
+    held: bool = False,
+) -> str:
     """Validate and insert one draft. A second draft for the same exploit returns the existing id."""
+    require_grant(grant, "documentation")
     validate("confirmed_exploit", exploit)
     missing = [name for name in REQUIRED if not exploit.get(name)]
     if missing:
@@ -63,6 +72,7 @@ def draft_report(conn: sqlite3.Connection, exploit: ConfirmedExploit, *, held: b
         pin=None,
         run_ids="",
     )
+    require_storable_sequence(exploit["minimal_sequence"])
     require_clean(body)
     when = now_iso()
     with conn:

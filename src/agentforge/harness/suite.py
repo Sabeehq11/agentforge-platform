@@ -17,6 +17,7 @@ from agentforge.agents.documentation import fix_validation_line, write_report_ma
 from agentforge.harness.invariants import evidence_of, grade
 from agentforge.harness.stub_target import StubTarget
 from agentforge.orchestrator.state import halt, log_run, now_iso
+from agentforge.store.access import issue_grant
 from agentforge.store.records import insert_regression_run, outcomes
 
 REPEATS = 3
@@ -49,17 +50,32 @@ def claim_handoff(conn: sqlite3.Connection, handoff_id: int, correlation_id: str
         return "already_done"
     if status == "claimed":
         return "claimed" if owner == correlation_id else "not_owner"
-    with conn:
-        cursor = conn.execute(
-            """
-            UPDATE version_handoffs SET status = 'claimed', claimed_by = ?
-            WHERE id = ? AND status = 'pending' AND claimed_by IS NULL
-            """,
-            (correlation_id, handoff_id),
-        )
-    if cursor.rowcount == 1:
-        return "claimed"
-    return "not_owner"
+    older = conn.execute(
+        "SELECT 1 FROM regression_jobs WHERE status IN ('pending', 'claimed') AND handoff_id < ? LIMIT 1",
+        (handoff_id,),
+    ).fetchone()
+    if older is not None:
+        return "not_owner"
+    try:
+        with conn:
+            cursor = conn.execute(
+                """
+                UPDATE version_handoffs SET status = 'claimed', claimed_by = ?
+                WHERE id = ? AND status = 'pending' AND claimed_by IS NULL
+                """,
+                (correlation_id, handoff_id),
+            )
+            if cursor.rowcount != 1:
+                raise sqlite3.IntegrityError("claim missed")
+            job = conn.execute(
+                "UPDATE regression_jobs SET status = 'claimed', claimed_by = ? WHERE handoff_id = ? AND status = 'pending'",
+                (correlation_id, handoff_id),
+            )
+            if job.rowcount != 1:
+                raise sqlite3.IntegrityError("job claim missed")
+    except sqlite3.IntegrityError:
+        return "not_owner"
+    return "claimed"
 
 
 def run_suite(
@@ -113,10 +129,16 @@ def run_suite(
     ]
     _maybe_kill(kill_at, "before_done")
     with conn:
-        conn.execute(
+        handoff = conn.execute(
             "UPDATE version_handoffs SET status = 'done' WHERE id = ? AND status = 'claimed' AND claimed_by = ?",
             (handoff_id, correlation_id),
         )
+        job = conn.execute(
+            "UPDATE regression_jobs SET status = 'done' WHERE handoff_id = ? AND status = 'claimed' AND claimed_by = ?",
+            (handoff_id, correlation_id),
+        )
+        if handoff.rowcount != 1 or job.rowcount != 1:
+            raise sqlite3.IntegrityError("completion missed the owner")
     if detections:
         first = detections[0]
         halt(conn, correlation_id, "regression_detected", str(first["detail"]), retryable=False, role="harness")
@@ -188,6 +210,7 @@ def _fill_missing(
         with conn:
             insert_regression_run(
                 conn,
+                grant=issue_grant("harness"),
                 case_id=case_id,
                 system_version=target_pin,
                 correlation_id=correlation_id,
@@ -346,6 +369,12 @@ def _stored(conn: sqlite3.Connection, target_pin: str, correlation_id: str) -> l
         (target_pin, correlation_id),
     ).fetchall()
     return [_envelope(correlation_id, str(row[0])) for row in rows]
+
+
+def job_depth(conn: sqlite3.Connection) -> int:
+    """Pending plus claimed. Done jobs are not backlog. One worker, so this is not a parallel queue."""
+    row = conn.execute("SELECT COUNT(*) FROM regression_jobs WHERE status IN ('pending', 'claimed')").fetchone()
+    return int(row[0]) if row else 0
 
 
 def suite_result_json(result: SuiteResult) -> str:

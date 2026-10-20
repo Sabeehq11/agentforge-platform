@@ -12,6 +12,9 @@ import json
 import sqlite3
 from typing import Any
 
+from agentforge.safety.content import require_storable_sequence
+from agentforge.store.access import Grant, require_grant
+
 REQUIRED = ("id", "severity", "category", "reproduction_steps", "observed_behavior", "expected_behavior", "system_version")
 CATEGORIES = ("TM-PI", "TM-EX", "TM-SC", "TM-TM", "TM-DS", "TM-ID")
 SEVERITIES = ("critical", "high", "medium", "low")
@@ -39,6 +42,7 @@ def sequence_hash(sequence: Any) -> str:
 def insert_regression_case(
     conn: sqlite3.Connection,
     *,
+    grant: Grant | None,
     case_id: str,
     exploit_id: str,
     category: str,
@@ -48,6 +52,7 @@ def insert_regression_case(
     system_version: str,
 ) -> str:
     """Insert one case for a confirmed exploit. A second case for the same exploit is a no-op."""
+    require_grant(grant, "harness")
     if not case_id or not exploit_id or not expected_safe_behavior or not system_version:
         raise IncompleteRecord("a regression case needs an id, an exploit, expected behavior and a version")
     if category not in CATEGORIES:
@@ -75,6 +80,7 @@ def insert_regression_case(
 def insert_regression_run(
     conn: sqlite3.Connection,
     *,
+    grant: Grant | None,
     case_id: str,
     system_version: str,
     correlation_id: str,
@@ -86,6 +92,7 @@ def insert_regression_run(
     recorded_at: str,
 ) -> int | None:
     """Append one completed repeat. A row that already exists is left unchanged and returns None."""
+    require_grant(grant, "harness")
     if outcome not in ("pass", "fail", "not_exercised", "wording_only"):
         raise IncompleteRecord(f"outcome {outcome!r} is not a regression outcome")
     if not 1 <= repeat_index <= 3:
@@ -144,8 +151,15 @@ def outcomes(conn: sqlite3.Connection, case_id: str, system_version: str) -> lis
     ]
 
 
-def insert_exploit(conn: sqlite3.Connection, record: dict[str, Any]) -> str:
-    """Insert a draft exploit. Returns the id. Raises IncompleteRecord or DuplicateSequence, never IntegrityError."""
+def insert_exploit(conn: sqlite3.Connection, record: dict[str, Any], grant: Grant | None = None) -> str:
+    """Insert a draft exploit. Returns the id. Raises IncompleteRecord or DuplicateSequence, never IntegrityError.
+
+    A role, actor, or approved_by field on the record is not a grant and is ignored. The grant argument is
+    an in-process capability from CampaignLoop, not a name the caller asserts.
+    """
+    require_grant(grant, "judge")
+    # A forged role field is not read. Copy so the caller's dict is unchanged.
+    record = {key: value for key, value in record.items() if key not in ("actor", "role", "approved_by")}
     missing = [name for name in REQUIRED if not record.get(name)]
     if missing:
         raise IncompleteRecord("missing required field: " + ", ".join(missing))
@@ -158,6 +172,7 @@ def insert_exploit(conn: sqlite3.Connection, record: dict[str, Any]) -> str:
         raise StoreError("an agent cannot insert a published exploit; publication requires human approval")
     if status not in ("draft", "pending_approval", "rejected"):
         raise StoreError(f"status {status!r} is not allowed on insert")
+    require_storable_sequence(record["reproduction_steps"])
     digest = sequence_hash(record["reproduction_steps"])
     steps = record["reproduction_steps"]
     if not isinstance(steps, str):

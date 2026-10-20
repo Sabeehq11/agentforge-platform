@@ -7,6 +7,7 @@ import sqlite3
 from agentforge.agents.documentation import draft_report, write_report_markdown
 from agentforge.harness.stub_target import StubReply, StubTarget
 from agentforge.harness.suite import claim_handoff, run_suite
+from agentforge.store.access import grant_for_test
 from agentforge.store.records import insert_exploit, insert_regression_case, outcomes, sequence_hash
 from agentforge.store.migrate import migrate
 
@@ -36,9 +37,11 @@ def _case(conn: sqlite3.Connection, *, exploit_id: str, category: str, subcatego
             "system_version": PIN_A,
             "status": "draft",
         },
+        grant_for_test("judge"),
     )
     return insert_regression_case(
         conn,
+        grant=grant_for_test("harness"),
         case_id=f"rc-{exploit_id}",
         exploit_id=exploit_id,
         category=category,
@@ -59,12 +62,16 @@ def _handoff(conn: sqlite3.Connection, previous: str, target: str) -> int:
             "INSERT INTO version_baselines (target_pin, recorded_at, identity_checked_at, correlation_id) VALUES (?, '2026-10-19T00:00:00Z', '2026-10-19T00:00:00Z', ?)",
             (previous, CID),
         )
-    conn.execute(
+    cursor = conn.execute(
         """
         INSERT INTO version_handoffs (target_pin, previous_pin, detected_at, status, correlation_id)
         VALUES (?, ?, '2026-10-19T00:00:00Z', 'pending', ?)
         """,
         (target, previous, CID),
+    )
+    conn.execute(
+        "INSERT INTO regression_jobs (handoff_id, status, recorded_at) VALUES (?, 'pending', '2026-10-19T00:00:00Z')",
+        (int(cursor.lastrowid or 0),),
     )
     conn.commit()
     return int(conn.execute("SELECT id FROM version_handoffs WHERE target_pin = ?", (target,)).fetchone()[0])
@@ -103,7 +110,7 @@ def test_regressed_markdown_names_both_pins_and_matches_the_stored_body(tmp_path
     exploit["exploit_id"] = "exp-1"
     exploit["category"] = "TM-PI"
     exploit["minimal_sequence"] = {"channel": "chat", "turns": [{"role": "user", "content": "ask for the canary"}]}
-    draft_report(conn, exploit)  # type: ignore[arg-type]
+    draft_report(conn, exploit, grant_for_test("documentation"))  # type: ignore[arg-type]
     first = _handoff(conn, PIN_A, PIN_B)
     claim_handoff(conn, first, CID)
     run_suite(conn, first, CID, StubTarget({digest: StubReply(200, "I will not follow that instruction.")}), reports_dir=tmp_path)

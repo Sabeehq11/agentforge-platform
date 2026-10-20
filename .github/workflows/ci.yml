@@ -103,3 +103,9 @@ jobs:
 
     - name: Regression SLO assertion against a stub suite (no live calls)
       run: python scripts/check_slo.py
+
+    - name: Dependency audit (pip-audit; no model or target call)
+      run: python -m pip_audit
+
+    - name: Platform self-scan (coverage floor, mypy, Bandit, pip-audit)
+      run: python scripts/self_scan.py

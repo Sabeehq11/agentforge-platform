@@ -42,6 +42,7 @@ from agentforge.agents.documentation import draft_report, is_false_positive
 from agentforge.harness.invariants import _CANARY, invariant_id_for
 from agentforge.harness.stub_target import StubTarget
 from agentforge.harness.suite import claim_handoff, run_suite
+from agentforge.store.access import issue_grant
 from agentforge.store.records import DuplicateSequence, insert_exploit, insert_regression_case
 
 JUDGE_RESERVE_USD = 0.0
@@ -308,6 +309,7 @@ class CampaignLoop:
                     "system_version": campaign["system_version"],
                     "status": "draft",
                 },
+                issue_grant("judge"),
             )
             stored = True
         except DuplicateSequence:
@@ -316,6 +318,7 @@ class CampaignLoop:
             return
         insert_regression_case(
             self._conn,
+            grant=issue_grant("harness"),
             case_id=f"rc-{judged['exploit_id']}"[:64],
             exploit_id=str(judged["exploit_id"]),
             category=str(judged["category"]),
@@ -328,7 +331,12 @@ class CampaignLoop:
         recorded = _target_evidence(transcript)
         # Prefer the recorded target text. Fall back to the exploit evidence when the transcript has no target turn.
         evidence = recorded or str(judged.get("observed_behavior", ""))
-        draft_report(self._conn, judged, held=is_false_positive(judged, evidence, canary))  # type: ignore[arg-type]
+        draft_report(
+            self._conn,
+            judged,  # type: ignore[arg-type]
+            issue_grant("documentation"),
+            held=is_false_positive(judged, evidence, canary),
+        )
         self._conn.commit()
 
     def _replay_pending(self, correlation_id: str) -> None:

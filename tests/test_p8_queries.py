@@ -12,6 +12,7 @@ from agentforge.observe.queries import answers, categories, cost, ordered_events
 from agentforge.orchestrator.priority import load_evidence
 from agentforge.orchestrator.state import log_run
 from agentforge.store.migrate import migrate
+from agentforge.store.access import grant_for_test
 from agentforge.store.records import insert_exploit, insert_regression_case, insert_regression_run
 
 PHI = "patient ssn 123-45-6789"
@@ -39,12 +40,14 @@ def _exploit(conn: sqlite3.Connection, exploit_id: str, category: str, *, status
             "system_version": PIN_A,
             "status": status,
         },
+        grant_for_test("judge"),
     )
 
 
 def _case(conn: sqlite3.Connection, case_id: str, exploit_id: str, category: str) -> None:
     insert_regression_case(
         conn,
+        grant=grant_for_test("harness"),
         case_id=case_id,
         exploit_id=exploit_id,
         category=category,
@@ -58,6 +61,7 @@ def _case(conn: sqlite3.Connection, case_id: str, exploit_id: str, category: str
 def _run(conn: sqlite3.Connection, case_id: str, pin: str, outcome: str, repeat: int = 1) -> None:
     insert_regression_run(
         conn,
+        grant=grant_for_test("harness"),
         case_id=case_id,
         system_version=pin,
         correlation_id="corr-q",
@@ -282,7 +286,7 @@ def test_q4_unmapped_statuses_stay_visible() -> None:
 
 def test_output_has_no_phi_or_transcript() -> None:
     conn = _conn()
-    _exploit(conn, "exp-phi", "TM-PI", steps=PHI)
+    _exploit(conn, "exp-phi", "TM-PI")
     _case(conn, "case-phi", "exp-phi", "TM-PI")
     _pins(conn, PIN_A)
     _run(conn, "case-phi", PIN_A, "fail")

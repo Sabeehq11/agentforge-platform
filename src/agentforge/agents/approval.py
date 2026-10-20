@@ -121,13 +121,17 @@ def decide(
     severity = conn.execute("SELECT severity FROM exploits WHERE id = ?", (row[1],)).fetchone()
     if severity is None:
         raise ApprovalRefused("report has no exploit")
+    matched = None
     if decision == "published" and str(severity[0]) in CRITICAL:
         matched = _match(approvals, purpose=PUBLISH, report_id=report_id, bound=str(severity[0]), today=today)
         if matched is None:
             raise ApprovalRefused("critical or high publication needs a publish_finding approval for this report and severity")
+    when = now_iso()
     with conn:
-        conn.execute("UPDATE reports SET status = ?, updated_at = ? WHERE id = ?", (decision, now_iso(), report_id))
+        conn.execute("UPDATE reports SET status = ?, updated_at = ? WHERE id = ?", (decision, when, report_id))
         conn.execute("UPDATE exploits SET status = ? WHERE id = ?", (decision, row[1]))
+        if matched is not None:
+            _record_approval(conn, matched, decision, when)
 
 
 def request_remediation(conn: sqlite3.Connection, report_id: str) -> None:
@@ -158,15 +162,32 @@ def authorize_remediation(
     ).fetchone()
     if row is None or row[0] != "pending_authorization":
         raise ApprovalRefused("remediation is not pending authorization")
+    matched = None
     if decision == "authorized":
         matched = _match(approvals, purpose=REMEDIATE, report_id=report_id, bound=str(row[1]), today=today)
         if matched is None:
             raise ApprovalRefused("remediation needs an authorize_remediation approval bound to the proposal hash")
+    when = now_iso()
     with conn:
         conn.execute(
             "UPDATE reports SET remediation_status = ?, updated_at = ? WHERE id = ?",
-            (decision, now_iso(), report_id),
+            (decision, when, report_id),
         )
+        if matched is not None:
+            _record_approval(conn, matched, decision, when)
+
+
+def _record_approval(conn: sqlite3.Connection, matched: GateApproval, decision: str, when: str) -> None:
+    """Store the label. A non-blank name is not proof that the named person is present."""
+    if not matched.approved_by.strip():
+        raise ApprovalRefused("approved_by is a label and must be non-blank")
+    conn.execute(
+        """
+        INSERT INTO approval_events (report_id, purpose, approved_by, bound, decision, recorded_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (matched.report_id, matched.purpose, matched.approved_by, matched.bound, decision, when),
+    )
 
 
 def proposal_hash(text: str) -> str:

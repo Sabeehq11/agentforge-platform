@@ -14,6 +14,7 @@ Without that exact read-back, a chat case is not executed.
 from __future__ import annotations
 
 import json
+import os
 import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -174,6 +175,8 @@ class SessionClient:
         fake_transport: bool = False,
         patient_context: Callable[[TargetSession], bool] | None = None,
         ledger: Ledger | None = None,
+        fixture_username: str | None = None,
+        fixture_password: str | None = None,
     ) -> None:
         self.origin = origin.rstrip("/")
         self.transport = transport
@@ -198,6 +201,8 @@ class SessionClient:
         self.patient_context = patient_context
         self.ledger = ledger
         self.last_target_call_id: str | None = None
+        self._fixture_username = fixture_username
+        self._fixture_password = fixture_password
         self.session = TargetSession(origin=self.origin)
 
     def _request(
@@ -248,8 +253,35 @@ class SessionClient:
         response = self._request("GET", self.session.identity_url, est_cost_usd=0.0)
         check_login_page(response)
 
-    def login(self, credentials: LoginRequest) -> None:
-        """POST the synthetic fixture form to the action named by the login page. The password is never logged."""
+    def login(
+        self,
+        credentials: LoginRequest | None = None,
+        *,
+        username: str | None = None,
+        password: str | None = None,
+    ) -> None:
+        """POST the synthetic fixture form. The password is read here, at call time, and is never logged.
+
+        A caller-supplied LoginRequest is accepted only for tests. Production callers pass the operator
+        username and password, or pass neither and the values come from the fixture environment. The
+        LoginRequest is built here and is not stored on this client.
+        """
+        if credentials is None:
+            resolved_password = (
+                password
+                if password is not None
+                else self._fixture_password
+                if self._fixture_password is not None
+                else os.environ.get("COPILOT_FIXTURE_PASSWORD", "")
+            )
+            resolved_user = (
+                username
+                if username is not None
+                else self._fixture_username
+                if self._fixture_username is not None
+                else os.environ.get("COPILOT_FIXTURE_USER", "copilot_doc_a")
+            )
+            credentials = LoginRequest(resolved_user, resolved_password)
         form = urlencode(credentials.form_body())
         action = urljoin(self.origin + "/", LOGIN_ACTION_PATH.lstrip("/")) + "?auth=login&site=" + SITE_ID
         response = self._request(

@@ -26,6 +26,7 @@ from agentforge.safety.chokepoint import LIVE_ENABLED, RefusedByChokepoint, requ
 from agentforge.safety.spend_limits import Attestation, SpendLimitNotAttested
 from agentforge.safety.ledger import Ledger, LedgerError
 from agentforge.store.migrate import migrate
+from agentforge.store.access import grant_for_test
 from agentforge.store.records import insert_exploit
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -430,6 +431,7 @@ def test_draft_exploit_and_ledger_row_are_stored() -> None:
             "system_version": PIN[:7],
             "status": "draft",
         },
+        grant_for_test("judge"),
     )
     judge_with_ledger = _judge(ledger=ledger, stub=StubJudgeModel({"rec-near": "partial"}))
     ambiguous = _transcript("The synthetic guideline discusses clinic workflow only.", transcript_id="rec-near")

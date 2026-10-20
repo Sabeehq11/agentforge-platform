@@ -11,6 +11,7 @@ from agentforge.harness.stub_target import StubReply, StubTarget
 from agentforge.harness.suite import claim_handoff, run_suite
 from agentforge.safety.phi import PhiRefused
 from agentforge.store.migrate import migrate
+from agentforge.store.access import grant_for_test
 from agentforge.store.records import DuplicateSequence, StoreError, insert_exploit, insert_regression_case, sequence_hash
 from tests.fixtures import confirmed_exploit
 
@@ -34,6 +35,7 @@ def _exploit(conn: sqlite3.Connection, exploit: dict[str, object]) -> None:
             "expected_behavior": exploit["expected_behavior"],
             "system_version": "aaaaaaa",
         },
+        grant_for_test("judge"),
     )
 
 
@@ -41,12 +43,12 @@ def test_a_draft_has_the_six_fields_and_a_second_draft_is_the_same_id() -> None:
     conn = _conn()
     exploit = confirmed_exploit()
     _exploit(conn, exploit)
-    report_id = draft_report(conn, exploit)  # type: ignore[arg-type]
+    report_id = draft_report(conn, exploit, grant_for_test("documentation"))  # type: ignore[arg-type]
     body = conn.execute("SELECT body, status FROM reports WHERE id = ?", (report_id,)).fetchone()
     assert body[1] == "draft"
     for heading in ("Severity:", "Clinical impact:", "Minimal sequence:", "Observed:", "Expected:", "Remediation:", "Fix validation:"):
         assert heading in body[0]
-    assert draft_report(conn, exploit) == report_id  # type: ignore[arg-type]
+    assert draft_report(conn, exploit, grant_for_test("documentation")) == report_id  # type: ignore[arg-type]
 
 
 def test_a_duplicate_sequence_does_not_write_a_report() -> None:
@@ -67,9 +69,10 @@ def test_a_duplicate_sequence_does_not_write_a_report() -> None:
                 "expected_behavior": "refused",
                 "system_version": "aaaaaaa",
             },
+            grant_for_test("judge"),
         )
     with pytest.raises(StoreError):
-        draft_report(conn, other)  # type: ignore[arg-type]
+        draft_report(conn, other, grant_for_test("documentation"))  # type: ignore[arg-type]
     assert conn.execute("SELECT COUNT(*) FROM reports").fetchone()[0] == 0
 
 
@@ -79,7 +82,7 @@ def test_phi_is_refused() -> None:
     exploit["observed_behavior"] = "patient email ada@example.com was quoted"
     _exploit(conn, exploit)
     with pytest.raises(PhiRefused):
-        draft_report(conn, exploit)  # type: ignore[arg-type]
+        draft_report(conn, exploit, grant_for_test("documentation"))  # type: ignore[arg-type]
     assert conn.execute("SELECT COUNT(*) FROM reports").fetchone()[0] == 0
 
 
@@ -92,9 +95,10 @@ def test_three_distinct_reports_and_fix_validation_cites_runs_without_publishing
         exploit["category"] = category
         exploit["minimal_sequence"] = {"channel": "chat", "turns": [{"role": "user", "content": f"sequence {index}"}]}
         _exploit(conn, exploit)
-        ids.append(draft_report(conn, exploit))  # type: ignore[arg-type]
+        ids.append(draft_report(conn, exploit, grant_for_test("documentation")))  # type: ignore[arg-type]
         insert_regression_case(
             conn,
+            grant=grant_for_test("harness"),
             case_id=f"rc-exp-{index}",
             exploit_id=f"exp-{index}",
             category=category,
@@ -108,8 +112,12 @@ def test_three_distinct_reports_and_fix_validation_cites_runs_without_publishing
     conn.execute(
         "INSERT INTO version_baselines (target_pin, recorded_at, identity_checked_at, correlation_id) VALUES ('aaaaaaa', '2026-10-19T00:00:00Z', '2026-10-19T00:00:00Z', 'corr-1')"
     )
-    conn.execute(
+    cursor = conn.execute(
         "INSERT INTO version_handoffs (target_pin, previous_pin, detected_at, status, correlation_id) VALUES ('bbbbbbb', 'aaaaaaa', '2026-10-19T00:00:00Z', 'pending', 'corr-1')"
+    )
+    conn.execute(
+        "INSERT INTO regression_jobs (handoff_id, status, recorded_at) VALUES (?, 'pending', '2026-10-19T00:00:00Z')",
+        (int(cursor.lastrowid or 0),),
     )
     handoff = int(conn.execute("SELECT id FROM version_handoffs").fetchone()[0])
     claim_handoff(conn, handoff, "corr-1")

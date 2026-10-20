@@ -3,8 +3,9 @@
 ruff==0.11.12
 mypy==1.15.0
 bandit==1.8.3
+pip-audit==2.9.0
 pytest-cov==6.1.1
-pytest==8.3.5
+pytest==9.0.3
 PyYAML==6.0.2
 types-PyYAML==6.0.12.20250402
 jsonschema==4.26.0

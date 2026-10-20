@@ -7,6 +7,7 @@ import sqlite3
 from agentforge.orchestrator.policy import Weights
 from agentforge.orchestrator.priority import load_evidence, next_category
 from agentforge.orchestrator.versions import Observation, observe_version, pending_handoffs
+from agentforge.store.access import grant_for_test
 from agentforge.store.records import insert_exploit
 from tests.fixtures import PIN_A, PIN_B, PIN_C, ScriptedTransport, p6_campaign, p6_store
 
@@ -102,5 +103,6 @@ def test_a_pending_handoff_alone_raises_no_category_and_evidence_scores_only_its
             "id": "exp-1", "severity": "low", "category": "TM-PI", "reproduction_steps": "s",
             "observed_behavior": "o", "expected_behavior": "e", "system_version": PIN_A, "status": "draft",
         },
+        grant_for_test("judge"),
     )
     assert _ranks(conn) == {"TM-PI": 100, "TM-DS": 40, "TM-EX": 40}

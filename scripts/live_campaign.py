@@ -21,7 +21,6 @@ sys.path.insert(0, str(ROOT / "src"))
 from agentforge.evals.cases import load_cases  # noqa: E402
 from agentforge.local_env import load_local_env  # noqa: E402
 from agentforge.evals.executor import CaseResult, merge_results, run_session_case, store_results  # noqa: E402
-from agentforge.evals.login import LoginRequest  # noqa: E402
 from agentforge.evals.session import SessionClient, real_transport  # noqa: E402
 from agentforge.safety.allowlist import Allowlist  # noqa: E402
 from agentforge.safety.budget import NotApproved, load_caps  # noqa: E402
@@ -82,7 +81,6 @@ def run_campaign(
     if billable and chat_reserve_usd is not None and budget.run_spent + chat_reserve_usd > SHARED_CEILING_USD:
         raise ValueError("shared ceiling would be exceeded")
     needs_login = any(case_id != "seed-tm-ex-3" for case_id in selected)
-    credentials = LoginRequest(username, password) if needs_login else None
     if needs_login and (not fixture_pid.isdigit() or int(fixture_pid) <= 0):
         raise ValueError("operator fixture pid is missing")
     by_id = {case.case_id: case for case in load_cases(root / "evals" / "cases")}
@@ -102,6 +100,8 @@ def run_campaign(
         chat_reserve_usd=chat_reserve_usd if billable else None,
         fake_transport=False,
         ledger=ledger if billable else None,
+        fixture_username=username if needs_login else None,
+        fixture_password=password if needs_login else None,
     )
     results: list[CaseResult] = []
     for case_id in selected:
@@ -109,7 +109,7 @@ def run_campaign(
             run_session_case(
                 by_id[case_id],
                 client,
-                credentials=None if case_id == "seed-tm-ex-3" else credentials,
+                credentials=None,
                 fixture_pid=None if case_id == "seed-tm-ex-3" else fixture_pid,
             )
         )

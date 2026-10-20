@@ -228,7 +228,7 @@ Documentation only. No target request, no model call, no new spend. `LIVE_ENABLE
 | M-8 | Fallback when the Orchestrator has no priority | P6 | partial | All-zero scores fall back to the least-recently-run attackable category (`tests/test_p6_priority.py`). Not met on a live run |
 | M-9 | Documentation agent produces the six report fields, reproducible by an engineer who was not there | P7 | partial | Template drafts in `reports/` and `tests/test_p7_docs.py`. Fix-validation cites `regression_runs` and does not publish. The model stays TBD. A reviewer replay is recorded in PROGRESS. Not a live finding |
 | M-10 | Minimum three distinct vulnerability reports | P7 | partial | Three fixture drafts in `reports/`. Q5 stays open. They are not deployed-target findings |
-| M-11 | Human approval before publishing critical or high findings and before any remediation. Agents propose a patch and never apply one | P7 | partial | Gates in `src/agentforge/agents/approval.py`, tested in `tests/test_p7_gates.py`. Identity binding stays P9 (D-8). No patch is applied |
+| M-11 | Human approval before publishing critical or high findings and before any remediation. Agents propose a patch and never apply one | P7 | partial | Gates in `src/agentforge/agents/approval.py`, tested in `tests/test_p7_gates.py`. P9 stores `approved_by` as a label, not an authenticated principal. No patch is applied |
 | M-12 | Model per role chosen with refusal and cost considered | P4 | partial | Owned by P4. A capped probe measured `red_team` (`openai/gpt-4.1-mini`, refused, `$0.0000228`) and `judge` (`anthropic/claude-sonnet-4.5`, completed, `$0.000291`) on 2026-10-19; [MODEL_PROBE.md](MODEL_PROBE.md). `config/models.yaml` sets those two roles. `orchestrator` and `documentation` are still `TBD`, and one call per family is a sample, not a refusal rate. Not moved |
 
 ## Regression, observability, data
@@ -242,10 +242,10 @@ Documentation only. No target request, no model call, no new spend. `LIVE_ENABLE
 | D-5 | Answers to all six observability questions, queryable, and readable by the Orchestrator | P8 | met | `src/agentforge/observe/queries.py`, `scripts/observe.py`, `tests/test_p8_queries.py`. Authored cases, exploits and regression cases stay separate. Overnight reconstruction stays E-15 |
 | D-6 | Data model for exploits, regression cases, run logs, coverage metrics | P2 | met | [schema.sql](../src/agentforge/store/schema.sql): all four tables. Closure audit 2026-10-17 |
 | D-7 | Data quality: unique id, required fields, no duplicate attack sequence | P2 constraints, P7 enforcement | partial | P2 constraints plus Documentation checks in `tests/test_p7_docs.py`. A duplicate sequence writes no report. Not met on a live report |
-| D-8 | Access control: who writes exploits, who reads, what approval precedes publication | P2 design, P9 enforcement | partial | P2 design met: [ACCESS_CONTROL.md](ACCESS_CONTROL.md). Insert refuses `published` (`test_published_insert_is_rejected`). Role-scoped enforcement is P9 |
+| D-8 | Access control: who writes exploits, who reads, what approval precedes publication | P2 design, P9 enforcement | met | [ACCESS_CONTROL.md](ACCESS_CONTROL.md). Grants at `CampaignLoop` and the suite (`tests/test_p9_access.py`). Direct SQL by the process owner remains possible (ADR-005). Not an identity provider |
 | D-9 | Migration of existing records without data loss, with a migration note per schema change | P2 | met | [migrate.py](../src/agentforge/store/migrate.py) refuses a missing note. Manual check: original row unchanged, new column populated. Note: [0001-initial-schema.md](migrations/0001-initial-schema.md) |
 | D-10 | SQL indexes on severity, category and system version, and a regression SLO verified in CI | P8 | met | Indexes already in `schema.sql`. Proof in [INDEXES.md](INDEXES.md). SLO is one `run_suite` call, `config/slo.yaml`, `scripts/check_slo.py`, D-014. Not a SQL timer |
-| D-11 | Queue depth and backup behavior | P6, only if a queue is used | not started | ADR-003 rejected a queue. The requirement does not apply unless that decision changes. Q7 |
+| D-11 | Queue depth and backup behavior | P6, only if a queue is used | not started | ADR-003 rejected a queue. `regression_jobs` is one SQLite table and one worker, not that queue. Q7 |
 | D-12 | Baseline CPU, memory, latency and throughput for 100 cases plus the full regression suite | P8 | met | `evals/results/baseline-p8.json`. Offline `CampaignLoop` plus `run_suite`. Not a live-target result |
 | D-13 | Load test of 100 consecutive cases against the live target, bottleneck named, fix documented | P8 | not started | Blocked. Unblock conditions in [LOAD_TEST.md](LOAD_TEST.md). The mock baseline is not this test |
 
@@ -277,10 +277,10 @@ Documentation only. No target request, no model call, no new spend. `LIVE_ENABLE
 | E-10 | CI makes no live or paid call. Secrets never reach a forked PR | P0 | met | `.github/workflows/ci.yml` has no secrets. `scripts/check_workflows.py` forbids `pull_request_target` and secret references |
 | E-11 | OWASP Web Top 10 and LLM Top 10 mapped, non-applicable items explained, SSRF checked against the code | P1 mapping, P3 per case | met | P1 half unchanged. P3 half: each of the six cases names an OWASP id already in [THREAT_MODEL.md](../THREAT_MODEL.md) (`LLM01`, `A01`, `A07`, `LLM04`). The suite does not claim every OWASP row has a case. SSRF remains a code reading, not a proof |
 | E-12 | Every case exercises a boundary, an invariant or a regression risk. Static payload lists do not count | P3 | met | `evals/schema/case.schema.json` requires `exercise`. The six cases use `invariant`, `boundary` and `regression_risk`. `scripts/check_evals.py` exits 0 |
-| E-13 | Auth model: which agent calls which target with which credential. Role-scoped database access | P9 | not started | |
-| E-14 | Harmful generated content: storage and redaction rules | P9 | not started | |
-| E-15 | Audit trail sufficient to reconstruct an overnight run | P9 | not started | |
-| E-16 | Platform self-scan: coverage floor, type check, dependency audit, Bandit | P9 | partial | Coverage, mypy and Bandit already run in CI, ahead of the roadmap ladder. pip-audit and the self-scan do not |
+| E-13 | Auth model: which agent calls which target with which credential. Role-scoped database access | P9 | met | Runtime isolation in `evals/session.py` and `agents/openrouter.py`. Grants in `store/access.py`. `tests/test_p9_credentials.py`, `tests/test_p9_access.py`. In-process only. Q3 stays open |
+| E-14 | Harmful generated content: storage and redaction rules | P9 | met | `safety/content.py`. Rejected bodies are not stored. Judge-confirmed sequences stay in the report. `tests/test_p9_content.py` |
+| E-15 | Audit trail sufficient to reconstruct an overnight run | P9 | met | `reconstruct()` in `orchestrator/trace.py`. Missing and out-of-order events are gaps. `tests/test_p9_audit.py`. Not a live overnight run |
+| E-16 | Platform self-scan: coverage floor, type check, dependency audit, Bandit | P9 | met | `scripts/self_scan.py`. Floor stays 85. Measured 89.50% on 2026-10-20. Not raised to 90 |
 
 ## Required exercises and submission artifacts
 

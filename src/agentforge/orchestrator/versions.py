@@ -64,9 +64,13 @@ def observe_version(
             # A pin that returns reuses its unique row. A note is logged, never a second handoff.
             _note_rollback(conn, correlation_id)
             return Observation("rollback_observed", observed_pin, previous_pin=latest)
-        conn.execute(
+        cursor = conn.execute(
             "INSERT INTO version_handoffs (target_pin, previous_pin, detected_at, status, correlation_id) VALUES (?, ?, ?, 'pending', ?)",
             (observed_pin, latest, when, correlation_id),
+        )
+        conn.execute(
+            "INSERT INTO regression_jobs (handoff_id, status, recorded_at) VALUES (?, 'pending', ?)",
+            (int(cursor.lastrowid or 0), when),
         )
         return Observation("handoff", observed_pin, previous_pin=latest)
 

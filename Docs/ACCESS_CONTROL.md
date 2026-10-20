@@ -1,7 +1,33 @@
 # Access control for platform data (design)
 
-Design record for checkpoint P2. It is not enforcement. P9 enforces the role split in code. SQLite has one writer
+Design record for checkpoint P2. P9 enforces the role split in code. SQLite has one writer
 and no database users, so roles are code paths, as [ADR-005](adr/005-state-store.md) records.
+
+A Python `Grant` is an in-process capability issued by `CampaignLoop` or the regression suite. A non-blank
+`approved_by` in the approval file is a label the operator wrote. Neither is an authenticated principal. There is
+no identity provider, session, or proof that the named person is present. A missing, blank, stale, or wrong-purpose
+record is refused. A well-formed label is stored as written.
+
+## Who may start a run
+
+The operator process on the machine that holds the store is the boundary. `scripts/orchestrate.py` starts a dry
+run. A live run stays refused while `LIVE_ENABLED` is false. `scripts/regress.py` starts a stub regression against
+`data/agentforge.db`. Agent packages cannot open a campaign, observe a version, or claim a job. The scheduled
+workflow has no store and no secrets, so it does not start either.
+
+## Who may view a report
+
+The operator who can read the store can read a report body. That is filesystem access, not a login. Observability
+queries and `reconstruct()` return status, ids, and `sequence_hash` only. Agent modules have no list-all-reports
+reader. The Documentation agent receives only the exploit it is drafting. Draft files in `reports/` are fixture
+drafts, not a publication channel.
+
+## Regression job backlog
+
+`regression_jobs` is one SQLite table and one worker. It is not the message queue rejected in ADR-003. Depth is
+`pending` plus `claimed`. The worker claims the oldest pending row. Newer jobs wait. They are not dropped and they
+are not claimed in parallel. A crash inside an open transaction leaves both the handoff and the job at the old
+status. A committed repeat is not replayed.
 
 ## Who writes
 

@@ -226,7 +226,7 @@ def run_session_case(
         return _missing_authority(case, client)
     if case.grader not in _CHAT_GRADERS:
         return _result(case, "not_run", f"{case.grader} is not on the public-module chat path")
-    if credentials is None:
+    if credentials is None and client._fixture_password is None:
         return _result(case, "not_run", "no synthetic credentials were supplied")
     if not fixture_pid:
         return _result(case, "not_run", "operator fixture pid was not supplied; chat was not sent")

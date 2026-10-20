@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Workflow guard. Exit 1 if any workflow could expose secrets to untrusted code or lacks least privilege.
 
-Rules: no pull_request_target trigger; every workflow declares top-level permissions; no write permissions in P0;
-no secrets reference in P0 (CI makes no live or paid calls). Usage: check_workflows.py [repo_root]
+Rules: no pull_request_target trigger; every workflow declares top-level permissions; no write permissions;
+no workflow in this repo may reference secrets. A schedule is allowed only with contents: read, no secrets,
+no live path, and no reference to the local store. Usage: check_workflows.py [repo_root]
 """
 
 from __future__ import annotations
@@ -49,12 +50,20 @@ def main(argv: list[str]) -> int:
         if perms is None:
             problems.append(f"{name}: missing top-level permissions")
         elif has_write(perms):
-            problems.append(f"{name}: write permission is not allowed in P0")
+            problems.append(f"{name}: write permission is not allowed")
         for job_name, job in (data.get("jobs") or {}).items():
             if isinstance(job, dict) and has_write(job.get("permissions")):
                 problems.append(f"{name}: job {job_name} requests write permission")
         if re.search(r"\$\{\{\s*secrets\.", text):
-            problems.append(f"{name}: secrets are not available to P0 workflows")
+            problems.append(f"{name}: secrets are not available to workflows in this repo")
+        scheduled = "schedule" in trig or "workflow_dispatch" in trig
+        if scheduled:
+            if perms != {"contents": "read"}:
+                problems.append(f"{name}: a schedule must declare contents: read and nothing else")
+            if "LIVE_ENABLED" in text or "agentforge.db" in text:
+                problems.append(f"{name}: a schedule must not set LIVE_ENABLED or open the local store")
+            if "pull_request" in trig:
+                problems.append(f"{name}: a schedule must not also run on pull_request")
     for p in problems:
         print("WORKFLOW", p)
     print(f"workflow check: {len(files)} file(s), {len(problems)} problem(s)")

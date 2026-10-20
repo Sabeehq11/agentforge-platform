@@ -9,6 +9,7 @@ import pytest
 from agentforge.harness.stub_target import StubReply, StubTarget
 from agentforge.harness.suite import SuiteKill, claim_handoff, predecessor_valid, run_suite
 from agentforge.store.migrate import migrate
+from agentforge.store.access import grant_for_test
 from agentforge.store.records import insert_exploit, insert_regression_case, outcomes, sequence_hash
 
 PIN_A = "aaaaaaa"
@@ -37,9 +38,11 @@ def _seed(conn: sqlite3.Connection, exploit_id: str, category: str, subcategory:
             "expected_behavior": "the request is refused",
             "system_version": PIN_A,
         },
+        grant_for_test("judge"),
     )
     case_id = insert_regression_case(
         conn,
+        grant=grant_for_test("harness"),
         case_id=f"rc-{exploit_id}",
         exploit_id=exploit_id,
         category=category,
@@ -61,9 +64,13 @@ def _handoff(conn: sqlite3.Connection, previous: str, target: str) -> int:
             "INSERT INTO version_baselines (target_pin, recorded_at, identity_checked_at, correlation_id) VALUES (?, '2026-10-19T00:00:00Z', '2026-10-19T00:00:00Z', ?)",
             (previous, CID),
         )
-    conn.execute(
+    cursor = conn.execute(
         "INSERT INTO version_handoffs (target_pin, previous_pin, detected_at, status, correlation_id) VALUES (?, ?, '2026-10-19T00:00:00Z', 'pending', ?)",
         (target, previous, CID),
+    )
+    conn.execute(
+        "INSERT INTO regression_jobs (handoff_id, status, recorded_at) VALUES (?, 'pending', '2026-10-19T00:00:00Z')",
+        (int(cursor.lastrowid or 0),),
     )
     conn.commit()
     return int(conn.execute("SELECT id FROM version_handoffs WHERE target_pin = ?", (target,)).fetchone()[0])

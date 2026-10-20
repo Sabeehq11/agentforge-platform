@@ -10,6 +10,7 @@ from agentforge.harness.suite import claim_handoff, run_suite
 from agentforge.orchestrator.state import log_run
 from agentforge.orchestrator.trace import trace_agents
 from agentforge.store.migrate import migrate
+from agentforge.store.access import grant_for_test
 from agentforge.store.records import insert_exploit, insert_regression_case
 from tests.fixtures import confirmed_exploit
 
@@ -36,10 +37,12 @@ def test_four_agents_share_one_correlation_id() -> None:
             "expected_behavior": exploit["expected_behavior"],
             "system_version": "aaaaaaa",
         },
+        grant_for_test("judge"),
     )
-    draft_report(conn, exploit)  # type: ignore[arg-type]
+    draft_report(conn, exploit, grant_for_test("documentation"))  # type: ignore[arg-type]
     insert_regression_case(
         conn,
+        grant=grant_for_test("harness"),
         case_id="rc-exp-1",
         exploit_id="exp-1",
         category="TM-EX",
@@ -52,9 +55,13 @@ def test_four_agents_share_one_correlation_id() -> None:
         "INSERT INTO version_baselines (target_pin, recorded_at, identity_checked_at, correlation_id) VALUES ('aaaaaaa', '2026-10-19T00:00:00Z', '2026-10-19T00:00:00Z', ?)",
         (CID,),
     )
-    conn.execute(
+    cursor = conn.execute(
         "INSERT INTO version_handoffs (target_pin, previous_pin, detected_at, status, correlation_id) VALUES ('bbbbbbb', 'aaaaaaa', '2026-10-19T00:00:00Z', 'pending', ?)",
         (CID,),
+    )
+    conn.execute(
+        "INSERT INTO regression_jobs (handoff_id, status, recorded_at) VALUES (?, 'pending', '2026-10-19T00:00:00Z')",
+        (int(cursor.lastrowid or 0),),
     )
     handoff = int(conn.execute("SELECT id FROM version_handoffs").fetchone()[0])
     claim_handoff(conn, handoff, CID)

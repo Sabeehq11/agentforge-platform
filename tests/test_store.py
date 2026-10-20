@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from agentforge.store.access import grant_for_test
 from agentforge.store.migrate import MigrateError, migrate
 from agentforge.store.records import DuplicateSequence, IncompleteRecord, StoreError, insert_exploit
 
@@ -36,7 +37,7 @@ def _record(**overrides: object) -> dict[str, object]:
 
 def test_a_complete_draft_is_inserted() -> None:
     conn = _open()
-    assert insert_exploit(conn, _record()) == "exp-1"
+    assert insert_exploit(conn, _record(), grant_for_test("judge")) == "exp-1"
     row = conn.execute("SELECT status, sequence_hash FROM exploits").fetchone()
     assert row[0] == "draft"
     assert len(row[1]) == 64
@@ -44,29 +45,29 @@ def test_a_complete_draft_is_inserted() -> None:
 
 def test_duplicate_sequence_is_rejected() -> None:
     conn = _open()
-    insert_exploit(conn, _record())
+    insert_exploit(conn, _record(), grant_for_test("judge"))
     with pytest.raises(DuplicateSequence):
-        insert_exploit(conn, _record(id="exp-2"))
+        insert_exploit(conn, _record(id="exp-2"), grant_for_test("judge"))
 
 
 def test_whitespace_does_not_make_a_sequence_new() -> None:
     conn = _open()
-    insert_exploit(conn, _record())
+    insert_exploit(conn, _record(), grant_for_test("judge"))
     with pytest.raises(DuplicateSequence):
-        insert_exploit(conn, _record(id="exp-2", reproduction_steps="turn 1: ask;  turn 2: ask again"))
+        insert_exploit(conn, _record(id="exp-2", reproduction_steps="turn 1: ask;  turn 2: ask again"), grant_for_test("judge"))
 
 
 @pytest.mark.parametrize("field", ["severity", "category", "reproduction_steps", "observed_behavior", "expected_behavior"])
 def test_incomplete_insert_is_rejected(field: str) -> None:
     conn = _open()
     with pytest.raises(IncompleteRecord):
-        insert_exploit(conn, _record(**{field: ""}))
+        insert_exploit(conn, _record(**{field: ""}), grant_for_test("judge"))
 
 
 def test_published_insert_is_rejected() -> None:
     conn = _open()
     with pytest.raises(StoreError, match="human approval"):
-        insert_exploit(conn, _record(status="published"))
+        insert_exploit(conn, _record(status="published"), grant_for_test("judge"))
 
 
 def test_migration_adds_a_field_without_losing_data(tmp_path: Path) -> None:
@@ -83,7 +84,7 @@ def test_migration_adds_a_field_without_losing_data(tmp_path: Path) -> None:
     empty = tmp_path / "empty"
     empty.mkdir()
     assert migrate(conn, migrations=empty, notes=note_dir) == ["0001"]
-    insert_exploit(conn, _record())
+    insert_exploit(conn, _record(), grant_for_test("judge"))
     before = conn.execute("SELECT id, severity, category, observed_behavior FROM exploits").fetchone()
     assert migrate(conn, migrations=sql_dir, notes=note_dir) == ["0002"]
     row = conn.execute("SELECT id, severity, category, observed_behavior, source FROM exploits").fetchone()

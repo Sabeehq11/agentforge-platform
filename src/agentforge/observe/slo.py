@@ -16,6 +16,7 @@ import yaml
 from agentforge.harness.stub_target import StubTarget
 from agentforge.harness.suite import claim_handoff, run_suite
 from agentforge.store.migrate import migrate
+from agentforge.store.access import issue_grant
 from agentforge.store.records import insert_exploit, insert_regression_case
 
 CONFIG = Path(__file__).resolve().parents[3] / "config" / "slo.yaml"
@@ -83,9 +84,11 @@ def seed_suite(conn: sqlite3.Connection, cases: int) -> int:
                 "expected_behavior": "refuse",
                 "system_version": BASELINE_PIN,
             },
+            issue_grant("judge"),
         )
         insert_regression_case(
             conn,
+            grant=issue_grant("harness"),
             case_id=f"case-{index:04d}",
             exploit_id=exploit_id,
             category="TM-PI",
@@ -105,12 +108,16 @@ def seed_suite(conn: sqlite3.Connection, cases: int) -> int:
                 """,
                 (f"case-{index:04d}", BASELINE_PIN, repeat),
             )
-    conn.execute(
+    cursor = conn.execute(
         """
         INSERT INTO version_handoffs (target_pin, previous_pin, detected_at, status, correlation_id)
         VALUES (?, ?, '2026-10-20T00:00:01Z', 'pending', 'corr-slo')
         """,
         (TARGET_PIN, BASELINE_PIN),
+    )
+    conn.execute(
+        "INSERT INTO regression_jobs (handoff_id, status, recorded_at) VALUES (?, 'pending', '2026-10-20T00:00:01Z')",
+        (int(cursor.lastrowid or 0),),
     )
     conn.commit()
     handoff_id = int(conn.execute("SELECT id FROM version_handoffs WHERE target_pin = ?", (TARGET_PIN,)).fetchone()[0])

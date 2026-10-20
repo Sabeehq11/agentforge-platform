@@ -7,8 +7,11 @@ neither row is omitted. Documentation is not a P6 role and must not appear.
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from typing import Any
+
+from agentforge.safety.phi import require_clean
 
 P6_ROLES = ("orchestrator", "red_team", "executor", "judge")
 
@@ -88,3 +91,119 @@ def trace_agents(conn: sqlite3.Connection, correlation_id: str) -> dict[str, Any
         "regression_run_ids": runs,
         "one_correlation_id": ids == {correlation_id} or not logs,
     }
+
+
+def reconstruct(conn: sqlite3.Connection, correlation_id: str) -> dict[str, Any]:
+    """Ordered evidence for one correlation id. Missing or reversed events are gaps, not invented rows.
+
+    The view holds ids, roles, states, outcomes, sequence hashes and approval labels. It does not hold
+    reproduction steps, transcripts, bodies, cookies or passwords. approved_by is a label, not a principal.
+    """
+    gaps: list[dict[str, str]] = []
+    campaign = conn.execute(
+        "SELECT phase, halt_reason FROM campaigns WHERE correlation_id = ?", (correlation_id,)
+    ).fetchone()
+    logs = [
+        {"id": int(row[0]), "role": str(row[1]), "state": str(row[2]), "error_code": row[3], "started_at": str(row[4])}
+        for row in conn.execute(
+            "SELECT id, agent_role, state, error_code, started_at FROM run_logs WHERE correlation_id = ? ORDER BY id",
+            (correlation_id,),
+        )
+    ]
+    log_roles = {row["role"] for row in logs}
+    if campaign is not None and str(campaign[0]) in ("done", "halted") and "orchestrator" not in log_roles:
+        gaps.append({"kind": "missing", "what": "orchestrator run_logs"})
+    journal = [
+        {"call_id": str(row[0]), "role": str(row[1]), "state": str(row[2])}
+        for row in conn.execute(
+            "SELECT call_id, role, state FROM dispatch_journal WHERE correlation_id = ? ORDER BY id",
+            (correlation_id,),
+        )
+    ]
+    for item in journal:
+        rejected = conn.execute(
+            "SELECT 1 FROM content_rejections WHERE correlation_id = ? AND call_id = ?",
+            (correlation_id, item["call_id"]),
+        ).fetchone()
+        if item["role"] not in log_roles and rejected is None:
+            gaps.append({"kind": "missing", "what": f"run_logs for {item['call_id']}"})
+    reports = [
+        {
+            "id": str(row[0]),
+            "status": str(row[1]),
+            "remediation_status": str(row[2]),
+            "sequence_hash": str(row[3]),
+        }
+        for row in conn.execute(
+            "SELECT id, status, remediation_status, sequence_hash FROM reports WHERE correlation_id = ? ORDER BY id",
+            (correlation_id,),
+        )
+    ]
+    for report in reports:
+        exploit = conn.execute(
+            "SELECT sequence_hash FROM exploits WHERE id = (SELECT exploit_id FROM reports WHERE id = ?)",
+            (report["id"],),
+        ).fetchone()
+        if exploit is None:
+            gaps.append({"kind": "missing", "what": f"exploit for {report['id']}"})
+        if "documentation" not in log_roles:
+            gaps.append({"kind": "missing", "what": f"documentation run_logs for {report['id']}"})
+        if report["status"] == "published":
+            published = conn.execute(
+                "SELECT approved_by FROM approval_events WHERE report_id = ? AND purpose = 'publish_finding'",
+                (report["id"],),
+            ).fetchone()
+            if published is None:
+                gaps.append({"kind": "missing", "what": f"publish_finding for {report['id']}"})
+            else:
+                report["approved_by"] = str(published[0])
+        if report["remediation_status"] == "authorized":
+            authorized = conn.execute(
+                "SELECT 1 FROM approval_events WHERE report_id = ? AND purpose = 'authorize_remediation'",
+                (report["id"],),
+            ).fetchone()
+            if authorized is None:
+                gaps.append({"kind": "missing", "what": f"authorize_remediation for {report['id']}"})
+    handoff = conn.execute(
+        "SELECT id, status FROM version_handoffs WHERE claimed_by = ?", (correlation_id,)
+    ).fetchone()
+    job = None
+    runs = [
+        {"id": int(row[0]), "outcome": str(row[1]), "sequence_hash": ""}
+        for row in conn.execute(
+            """
+            SELECT r.id, r.outcome FROM regression_runs r
+            WHERE r.correlation_id = ? ORDER BY r.id
+            """,
+            (correlation_id,),
+        )
+    ]
+    if handoff is not None:
+        job_row = conn.execute(
+            "SELECT status FROM regression_jobs WHERE handoff_id = ?", (int(handoff[0]),)
+        ).fetchone()
+        if job_row is None:
+            gaps.append({"kind": "missing", "what": "regression job"})
+        else:
+            job = {"handoff_id": int(handoff[0]), "status": str(job_row[0])}
+        if str(handoff[1]) == "done" and not runs:
+            gaps.append({"kind": "missing", "what": "regression_runs"})
+    previous = ""
+    for row in logs:
+        if previous and row["started_at"] < previous:
+            gaps.append({"kind": "order_violation", "what": f"run_logs {row['id']}"})
+        previous = row["started_at"]
+    view = {
+        "correlation_id": correlation_id,
+        "status": "incomplete" if gaps else "complete",
+        "gaps": gaps,
+        "campaign_phase": None if campaign is None else str(campaign[0]),
+        "halt_reason": None if campaign is None else campaign[1],
+        "run_logs": logs,
+        "journal": journal,
+        "reports": reports,
+        "job": job,
+        "regression_runs": runs,
+    }
+    require_clean(json.dumps(view))
+    return view

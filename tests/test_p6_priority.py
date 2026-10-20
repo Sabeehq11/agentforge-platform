@@ -9,6 +9,7 @@ import pytest
 from agentforge.orchestrator import priority
 from agentforge.orchestrator.policy import ConfigError, Weights, load_config, parse_config, validate_variants
 from agentforge.orchestrator.priority import Evidence, load_evidence, next_category, rank
+from agentforge.store.access import grant_for_test
 from agentforge.store.records import insert_exploit
 from tests.fixtures import p6_campaign, p6_store
 
@@ -33,14 +34,19 @@ def _exploit(conn: sqlite3.Connection, category: str, severity: str = "high", st
             "id": exploit_id, "severity": severity, "category": category, "reproduction_steps": exploit_id,
             "observed_behavior": "o", "expected_behavior": "e", "system_version": VERSION, "status": status,
         },
+        grant_for_test("judge"),
     )
     return exploit_id
 
 
 def _handoff(conn: sqlite3.Connection) -> None:
-    conn.execute(
+    cursor = conn.execute(
         "INSERT INTO version_handoffs (target_pin, previous_pin, detected_at, status, correlation_id) VALUES ('a1b2c3d', ?, 'now', 'pending', 'c')",
         (VERSION,),
+    )
+    conn.execute(
+        "INSERT INTO regression_jobs (handoff_id, status, recorded_at) VALUES (?, 'pending', 'now')",
+        (int(cursor.lastrowid or 0),),
     )
 
 

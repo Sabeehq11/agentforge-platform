@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from agentforge.harness.stub_target import StubTarget  # noqa: E402
-from agentforge.harness.suite import claim_handoff, run_suite, suite_result_json  # noqa: E402
+from agentforge.harness.suite import claim_handoff, job_depth, run_suite, suite_result_json  # noqa: E402
 from agentforge.store.migrate import migrate  # noqa: E402
 
 
@@ -30,6 +30,7 @@ def main(argv: list[str]) -> int:
     conn = sqlite3.connect(db)
     conn.execute("PRAGMA foreign_keys = ON")
     migrate(conn)
+    print(f"regression job depth: {job_depth(conn)}")
     row = conn.execute(
         "SELECT id, status, claimed_by FROM version_handoffs WHERE status IN ('pending', 'claimed') ORDER BY id LIMIT 1"
     ).fetchone()

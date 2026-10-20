@@ -19,6 +19,7 @@ from agentforge.agents.approval import (
 )
 from agentforge.agents.documentation import draft_report
 from agentforge.store.migrate import migrate
+from agentforge.store.access import grant_for_test
 from agentforge.store.records import insert_exploit
 from tests.fixtures import confirmed_exploit
 
@@ -43,8 +44,9 @@ def _draft(conn: sqlite3.Connection, *, held: bool = False) -> str:
             "expected_behavior": exploit["expected_behavior"],
             "system_version": "aaaaaaa",
         },
+        grant_for_test("judge"),
     )
-    return draft_report(conn, exploit, held=held)  # type: ignore[arg-type]
+    return draft_report(conn, exploit, grant_for_test("documentation"), held=held)  # type: ignore[arg-type]
 
 
 def _file(tmp_path: Path, purpose: str, report_id: str, bound: str) -> list:

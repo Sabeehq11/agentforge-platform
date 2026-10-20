@@ -321,15 +321,22 @@ are unverified (G-2).
   - Index proof is in [INDEXES.md](INDEXES.md). The live-test block and its unblock conditions are in [LOAD_TEST.md](LOAD_TEST.md).
 
 ### P9. Platform security and CI completion
-- Status: not started. Depends on: P2 onward.
-- [ ] Coverage floor, mypy baseline, pip-audit, Bandit, self-scan
-- [ ] Auth model, role-scoped database access
-- [ ] Scheduled and target-change triggers with protected secrets
-- [ ] Harmful-content handling, audit trail
-- [ ] Verify: breaking PR fails CI
-- [ ] Verify: off-allowlist target refused and logged
-- [ ] Verify: no secrets exposed to fork PRs
+- Status: in review. Depends on: P2 onward. Not a live exercise. P10 is not started.
+- [x] Coverage floor, mypy baseline, pip-audit, Bandit, self-scan
+- [x] Auth model, role-scoped database access
+- [x] Scheduled and target-change triggers with protected secrets
+- [x] Harmful-content handling, audit trail
+- [x] Verify: breaking PR fails CI
+- [x] Verify: off-allowlist target refused and logged
+- [x] Verify: no secrets exposed to fork PRs
 - Evidence:
+  - Measured coverage on 2026-10-20 is 89.50%. The floor stays 85. It is not raised to 90. `scripts/self_scan.py` runs pytest, mypy, Bandit and pip-audit. CI keeps the existing steps and adds pip-audit plus the self-scan. `pip-audit==2.9.0` is pinned. No workflow references `secrets.`
+  - Grants are issued only by `CampaignLoop` and the suite. A forged role string writes nothing (`tests/test_p9_access.py`). `approved_by` is stored as a label. It is not an authenticated principal. A blank label cannot publish. Agent modules do not import `issue_grant`, `open_campaign`, `observe_version`, `claim_handoff` or `run_suite`.
+  - The fixture password is read in `evals/session.py` `login`. The provider key is read in `agents/openrouter.py`. Agent modules do not read either (`tests/test_p9_credentials.py`). `MODULE_SIGNING_SECRET` is not read. Q3 stays open. Isolation is in-process.
+  - A rejected model body is not stored. A Judge-confirmed canary sequence stays in the draft report. A PHI-shaped sequence writes no row (`tests/test_p9_content.py`).
+  - A version handoff inserts one `regression_jobs` row in the same transaction. Depth is pending plus claimed. One worker claims the oldest. A raise inside the transaction leaves neither row. A kill after a committed repeat does not replay it (`tests/test_p9_triggers.py`). `.github/workflows/regression-schedule.yml` has `contents: read`, no secrets, and does not open the local store. D-11 stays unmet. ADR-003 is not reopened.
+  - `reconstruct()` returns `complete` or `incomplete` with `missing` or `order_violation`. Deleting the approval row is incomplete. The view fails if it contains PHI (`tests/test_p9_audit.py`).
+  - `scripts/orchestrate.py --live` and `scripts/regress.py --live` still exit 2. `LIVE_ENABLED` and `PROVIDER_ENABLED` remain `False`. No ATO packet was assembled.
 
 ### P10. Required exercises and evidence
 - Status: not started. Depends on: P6 to P9.

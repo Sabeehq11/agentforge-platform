@@ -169,10 +169,10 @@ def _time_writes(clock: WriteClock) -> None:
     import agentforge.harness.suite as suite
     import agentforge.orchestrator.loop as loop
 
-    def timed_exploit(conn: sqlite3.Connection, record: dict[str, Any]) -> str:
+    def timed_exploit(conn: sqlite3.Connection, record: dict[str, Any], grant: Any = None) -> str:
         started = time.perf_counter()
         try:
-            return insert_exploit(conn, record)
+            return insert_exploit(conn, record, grant)
         finally:
             clock.seconds += time.perf_counter() - started
             clock.rows += 1

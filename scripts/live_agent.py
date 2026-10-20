@@ -22,7 +22,6 @@ from agentforge.agents.red_team import SeedMutator, mutate_seed  # noqa: E402
 from agentforge.contracts.messages import CampaignRequest  # noqa: E402
 from agentforge.evals.cases import load_cases  # noqa: E402
 from agentforge.evals.graders import grade_canary  # noqa: E402
-from agentforge.evals.login import LoginRequest  # noqa: E402
 from agentforge.evals.session import SessionClient, real_transport  # noqa: E402
 from agentforge.local_env import load_local_env  # noqa: E402
 from agentforge.safety.allowlist import Allowlist  # noqa: E402
@@ -93,7 +92,7 @@ def run_agent(root: Path) -> dict[str, object]:
         chat_reserve_usd=reserve,
         ledger=ledger,
     )
-    client.login(LoginRequest(user, password))
+    client.login(username=user, password=password)
     client.read_dock()
     client.open_patient(pid)
     chat = client.post_chat(turn)
