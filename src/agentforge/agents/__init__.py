@@ -1,4 +1,4 @@
-"""Agent protocols, plus the P4 Judge and the minimal Red Team. No Orchestrator or Documentation agent."""
+"""Agent protocols, the Judge, the Red Team, and the P7 Documentation template."""
 
 from agentforge.agents.interfaces import Documentation, Harness, Judge, Orchestrator, RedTeam
 

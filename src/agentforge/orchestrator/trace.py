@@ -60,3 +60,31 @@ def trace(conn: sqlite3.Connection, correlation_id: str) -> dict[str, Any]:
         "roles": roles,
         "documentation_present": any(row["role"] == "documentation" for row in journal + logs),
     }
+
+
+P7_AGENTS = ("orchestrator", "red_team", "judge", "documentation")
+
+
+def trace_agents(conn: sqlite3.Connection, correlation_id: str) -> dict[str, Any]:
+    """The four PRD agents plus the executor, all under the campaign correlation id. Read only."""
+    base = trace(conn, correlation_id)
+    logs = base["run_logs"]
+    agents = tuple(role for role in P7_AGENTS if any(row["role"] == role for row in logs))
+    reports = [
+        str(row[0])
+        for row in conn.execute("SELECT id FROM reports WHERE correlation_id = ? ORDER BY id", (correlation_id,))
+    ]
+    runs = [
+        int(row[0])
+        for row in conn.execute("SELECT id FROM regression_runs WHERE correlation_id = ? ORDER BY id", (correlation_id,))
+    ]
+    ids = {correlation_id}
+    ids.update(str(row[0]) for row in conn.execute("SELECT correlation_id FROM run_logs WHERE correlation_id = ?", (correlation_id,)))
+    return {
+        "correlation_id": correlation_id,
+        "agents": agents,
+        "executor": any(row["role"] == "harness" for row in logs),
+        "report_ids": reports,
+        "regression_run_ids": runs,
+        "one_correlation_id": ids == {correlation_id} or not logs,
+    }

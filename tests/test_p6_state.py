@@ -16,7 +16,7 @@ def test_migration_0003_adds_only_the_six_tables() -> None:
     names = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
     assert {"campaigns", "dispatch_journal", "signals", "version_baselines", "version_handoffs", "attack_variants"} <= names
     versions = [r[0] for r in conn.execute("SELECT version FROM schema_migrations ORDER BY version")]
-    assert versions == ["0001", "0002", "0003"]
+    assert versions == ["0001", "0002", "0003", "0004"]  # 0004 is additive; the six P6 tables are unchanged
     sql = conn.execute("SELECT sql FROM sqlite_master WHERE name = 'run_logs'").fetchone()[0]
     assert "'harness'" in sql and "executor" not in sql  # run_logs CHECKs are untouched
 

@@ -31,7 +31,8 @@ only over HTTP. See [TARGET_FREEZE.md](Docs/TARGET_FREEZE.md).
   A labeled set and a drift procedure are in `evals/judge/` and [JUDGE_DRIFT.md](Docs/JUDGE_DRIFT.md).
 - **Orchestrator, scripted** (`src/agentforge/orchestrator/`, `scripts/orchestrate.py`): a crash-safe dispatch journal,
   ranking, bounded retries and a cost stop. `python scripts/orchestrate.py --dry-run` runs one scripted campaign.
-  The all-agents trace is partial: Documentation is deferred to P7.
+  A P7 run can extend that trace through the Documentation agent under the same correlation ID.
+  `python scripts/regress.py` replays a pending handoff on an in-process stub and has no live path.
 - **Red Team** (`src/agentforge/agents/red_team_generator.py`): strict model-output validation and a novelty check.
   Tests use a scripted model. `SeedMutator` remains for the P4 path.
 - **Model config** (`config/models.yaml`, `src/agentforge/models_config.py`): Red Team and Judge must use different
@@ -57,8 +58,9 @@ Cloudflare quick tunnel question is Q2 in [DECISIONS.md](Docs/DECISIONS.md).
 
 ## Planned (not built)
 
-- **P6:** Orchestrator, model-driven Red Team, persisted run state.
-- **P7:** regression harness and Documentation agent.
+- **P6:** a live Orchestrator run. The scripted path is built. Live replay is blocked.
+- **P7 live replay:** the stub harness and Documentation template are built. A live regression against the
+  deployed target is not. Reports in `reports/` are platform drafts, not deployed findings.
 - **P8:** observability queries and load tests.
 - **P9:** the platform's own access control and security review.
 - Later checkpoints are in [ROADMAP.md](Docs/ROADMAP.md). Progress and evidence: [PROGRESS.md](Docs/PROGRESS.md).
@@ -80,11 +82,15 @@ pytest
 
 ```
 python scripts/check_evals.py
+python scripts/regress.py
+python scripts/check_reports.py
 ```
 
 This validates every case against `evals/schema/case.schema.json`, scans fixtures for PHI patterns, and runs the
 suite in dry-run mode. It exits 0 and prints `OK 7 cases ... dry-run fabricated no pass`. A dry run never reports a
 `pass`: a case that needs a target is `not_run`. Replay of a recorded transcript is covered by `tests/test_evals.py`.
+`scripts/regress.py` refuses `--live` and does not open a socket. `scripts/check_reports.py` checks the three draft
+reports.
 
 Local checks that CI also runs:
 

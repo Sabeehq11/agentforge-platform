@@ -23,6 +23,12 @@ exploit it was given and nothing else. A human reads everything.
 ## What approval precedes publication
 
 A human moves an exploit from `draft` to `pending_approval`, reviews it, and moves it to `published` or
-`rejected`. Critical and high findings require that approval before anyone outside the platform sees them. An
-agent may propose a remediation and never apply one. That rule is stated here and in the Architecture Defense
-packet. The code that checks the human identity is P9.
+`rejected`. Critical and high findings require a `publish_finding` approval before anyone outside the platform
+sees them. Medium and low still require that human `decide` step, and an agent still cannot insert them as
+`published`. The PRD names the approval-record requirement for critical and high only, so a medium or low
+`decide("published")` does not look up a `publish_finding` file. That is the publication policy, not a skip of
+the human gate. Remediation is a second gate: an agent may set `remediation_status` to `proposed` only, and
+`authorized` requires a separate `authorize_remediation` record bound to the report id and the proposal hash.
+A publication approval does not authorize remediation, and a remediation approval does not publish. Neither
+record applies a patch. The code that checks the human identity is P9. P7 enforces that no agent can skip either
+gate.

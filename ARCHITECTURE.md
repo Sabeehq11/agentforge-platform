@@ -21,11 +21,11 @@ Evidence so far is modest and is stated plainly. Three graded cases, one each fr
 | Orchestrator | Choose the next campaign from coverage, findings and regressions | Store reads, budget state | `CampaignRequest` (`contracts/v1/campaign_request.schema.json`) | Trusted to schedule. Never judges or publishes | `TBD` in `config/models.yaml`, rules first | Planned (P6) |
 | Red Team | Propose attack sequences within a budget | `CampaignRequest`, seed cases in `evals/cases/` | `AttackResult` (`attack_result.schema.json`) | Untrusted by the Judge. Its claims are never evidence | `openai/gpt-4.1-mini` configured. `SeedMutator` is deterministic and calls no model | Built, partial (`src/agentforge/agents/red_team.py`) |
 | Judge | Decide pass, fail or partial independently | Executor-recorded transcript (`recorded_transcript.schema.json`) | `Verdict` (`verdict.schema.json`) or a draft `ConfirmedExploit` (`confirmed_exploit.schema.json`) | Independent of the Red Team. Output is proposed evidence, not truth | `anthropic/claude-sonnet-4.5`, ambiguous cases only | Built (`src/agentforge/agents/judge.py`) |
-| Documentation | Write a reproducible report from a confirmed exploit | `ConfirmedExploit` | A draft report. Publication is a human act | A draft until a human approves | `TBD` in `config/models.yaml`, template and validation first | Planned (P7) |
+| Documentation | Write a reproducible report from a confirmed exploit | `ConfirmedExploit` | A draft report. Publication is a human act | A draft until a human approves | `TBD` in `config/models.yaml`, template and validation first | Built, stub (`src/agentforge/agents/documentation.py`) |
 
 Supporting components, which are not agents:
 - **Built.** The deterministic executor and graders (`src/agentforge/evals/`), the safety chokepoint (`src/agentforge/safety/`), the cost ledger (`src/agentforge/safety/ledger.py`) and the SQLite store (`src/agentforge/store/`).
-- **Planned (P7).** The regression harness.
+- **Built (P7, stub).** The regression harness (`src/agentforge/harness/`). Live replay is not built.
 
 ## Interaction diagram
 
@@ -87,7 +87,7 @@ PRD basis: "how they recover from failure", the typed error list, and the Append
 PRD basis: versioned schemas, typed errors, contract tests, and a migration note for each interface change.
 
 - **Built.** Four v1 messages, `recorded_transcript`, five error schemas and a shared `error_envelope` with a `retryable` flag, all in `contracts/v1/`. Producer and consumer tests (`tests/test_contracts.py`, `tests/test_contracts_nested.py`) and a schema-diff CI check (`scripts/check_schema_diff.py`) reject a breaking change that has no version bump. Optional-field additions made without a bump are logged in `Docs/DECISIONS.md` section 5, and store changes have notes in `Docs/migrations/`.
-- **Planned (P6/P7).** `RegressionTrigger` and `RegressionResult` are named in `Docs/DEFENSE_PACKET.md` and have no schema. The Orchestrator-to-harness handoff is undefined until then. Adding it is a v1 addition with a migration note.
+- **Built (P7).** `RegressionTrigger` and `RegressionResult` stay names in `Docs/DEFENSE_PACKET.md`. They are not in the PRD typed-message list, so they are not new v1 schemas. The version handoff row is the trigger. `regression_detected` is the result.
 - Handoff today is direct invocation plus the store. There is no wire protocol.
 
 ## C. Orchestrator prioritization and stopping policy
@@ -95,14 +95,15 @@ PRD basis: versioned schemas, typed errors, contract tests, and a migration note
 PRD basis: reads coverage gaps, open findings and regressions; halts when spend produces no signal; has a no-priority fallback; triggers regression when the target changes.
 
 - **Built (P6).** `src/agentforge/orchestrator/` ranks from persisted evidence only (`priority.py`), stops or redirects once when spend yields no validated signal (`stop.py`), and journals every external effect write-ahead (`journal.py`, [ADR-008](Docs/adr/008-dispatch-journal.md)). A version change writes a handoff and does not replay it (`versions.py`). Weights and bounds are in `config/orchestrator.yaml`.
-- **Partial.** The all-agents trace is partial: Orchestrator, Red Team, the executor and the Judge are traced under one correlation ID (`trace.py`). The Documentation leg is deferred to P7. P6 does not mark that trace met.
+- **Built (P7).** `trace_agents` lists Orchestrator, Red Team, Judge and Documentation under the campaign correlation ID when each has a `run_logs` row (`trace.py`). The P6 trace still omits Documentation on a P6-only run. Live replay of that chain is not built.
 
 ## D. Exploit-to-regression lifecycle
 
 PRD basis: a confirmed exploit becomes a deterministic case; detect reappearance and cross-category regression; a passing regression must mean fixed, not drifted.
 
 - **Built.** The Judge turns a canary-graded `fail` into a draft `ConfirmedExploit` and never publishes. The store has `exploits` (`draft`, `pending_approval`, `published`, `rejected`), `regression_cases` with a foreign key to an exploit, a unique `sequence_hash`, and required-field checks (`src/agentforge/store/schema.sql`, `records.py`). Duplicate and incomplete inserts are rejected (`tests/test_store.py`).
-- **Planned (P7).** Verdict, then store row, then regression case, then repeat runs that assert side effects rather than wording, then a fixed or regressed state, then a Documentation draft, then human approval. No agent writes the store today, so no "fixed" state exists.
+- **Built (P7, stub only).** A confirmed fail becomes a regression case. The suite claims a version handoff and appends `regression_runs` per case, target pin and repeat. `lifecycle` is a cache of the latest pin, not history. A pass is the category invariant: a canary case can pass on HTTP 200, and 401/403 is a pass only for missing authority. Wording-only agreement is not `fixed`. Reappearance and a cross-category fail of a previously fixed case emit `regression_detected`. The Documentation agent writes a draft from a template and updates fix-validation from those runs. Publication and remediation authorization are separate human gates. Agents propose a patch and never apply one. Reports are platform drafts, not live target findings.
+- **Planned.** Live replay against the deployed target. That path stays blocked: no public URL, empty allowlist, no provider attestation, and `LIVE_ENABLED` is false. An interrupted stub claim may re-execute an uncommitted repeat. A live replay must not copy that rule.
 - The live results so far are defense-held passes. No exploit has been confirmed against the target.
 
 ## E. Observability and data flow

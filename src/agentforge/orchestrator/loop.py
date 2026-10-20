@@ -1,19 +1,20 @@
-"""The orchestrator loop. Wires Orchestrator, Red Team, executor and Judge under one correlation ID.
+"""The orchestrator loop. Wires Orchestrator, Red Team, executor, Judge and Documentation under one correlation ID.
 
-Documentation is not run here. Verdicts come only from RulesJudge.judge_transcript on a transcript the executor
-recorded. Every external effect is a journaled step. A phase change and its run_logs row are one transaction.
+Documentation drafts from a confirmed exploit. It does not call a model. A pending version handoff replays the
+full eligible regression suite on the offline stub before the next attack. A missing stub is a typed halt, not a
+skip. Every external effect is a journaled step. A phase change and its run_logs row are one transaction.
 The executor step is logged with the existing role `harness`. dispatch_journal.role carries `executor`.
 """
 
 from __future__ import annotations
 
-import json
 import sqlite3
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
-from agentforge.agents.judge import RulesJudge
+from agentforge.agents.judge import RulesJudge, TranscriptRejected, require_transcript, target_text
 from agentforge.agents.novelty import NoveltyReport, sequence_distance
 from agentforge.agents.red_team_generator import Generated, GenerationStopped, ModelClient, Parent, RedTeamGenerator, load_parent
 from agentforge.contracts.messages import AttackResult, CampaignRequest
@@ -37,7 +38,11 @@ from agentforge.orchestrator.state import (
 )
 from agentforge.orchestrator.stop import apply_redirect, decide
 from agentforge.orchestrator.versions import observe_version
-from agentforge.store.records import DuplicateSequence, insert_exploit
+from agentforge.agents.documentation import draft_report, is_false_positive
+from agentforge.harness.invariants import _CANARY, invariant_id_for
+from agentforge.harness.stub_target import StubTarget
+from agentforge.harness.suite import claim_handoff, run_suite
+from agentforge.store.records import DuplicateSequence, insert_exploit, insert_regression_case
 
 JUDGE_RESERVE_USD = 0.0
 _CATEGORIES = ("TM-PI", "TM-EX", "TM-SC", "TM-TM", "TM-DS", "TM-ID")
@@ -69,6 +74,8 @@ class CampaignLoop:
         *,
         identity_verified: bool = True,
         observed_pin: str | None = None,
+        stub: StubTarget | None = None,
+        reports_dir: Path | None = None,
     ) -> None:
         self._conn = conn
         self._journal = journal
@@ -79,6 +86,8 @@ class CampaignLoop:
         self._seeds = tuple(seeds)
         self._identity_verified = identity_verified
         self._observed_pin = observed_pin
+        self._stub = stub
+        self._reports_dir = reports_dir
         self._step = 0
         self._verdicts: list[dict[str, Any]] = []
 
@@ -133,6 +142,7 @@ class CampaignLoop:
         if observation.action == "refused":
             self._stop(correlation_id, "target_unreachable", False, observation.detail)
             raise ContractError("campaign_request", observation.detail)
+        self._replay_pending(correlation_id)
 
     def _require_identity(self, correlation_id: str) -> None:
         """Re-verify the target before any live call a resume might make.
@@ -270,7 +280,7 @@ class CampaignLoop:
         if isinstance(judged, dict):
             self._verdicts.append(dict(judged))
         if isinstance(judged, dict) and judged.get("status") == "draft" and "exploit_id" in judged:
-            self._store_exploit(correlation_id, dict(judged))
+            self._store_exploit(correlation_id, dict(judged), result, executed.transcript)
         set_phase(self._conn, correlation_id, "recording", role="harness")
         self._accept(correlation_id, judged)
         if executed.halt is not None:
@@ -281,8 +291,10 @@ class CampaignLoop:
             return self._stop(correlation_id, "budget_exceeded", False, str(judged.get("detail", "")))
         return None
 
-    def _store_exploit(self, correlation_id: str, judged: dict[str, Any]) -> None:
+    def _store_exploit(self, correlation_id: str, judged: dict[str, Any], result: AttackResult, transcript: object) -> None:
         campaign = require_campaign(self._conn, correlation_id)
+        subcategory = str(result["subcategory"])
+        stored = False
         try:
             insert_exploit(
                 self._conn,
@@ -290,19 +302,70 @@ class CampaignLoop:
                     "id": judged["exploit_id"],
                     "severity": judged["severity"],
                     "category": judged["category"],
-                    "reproduction_steps": json.dumps(judged["minimal_sequence"], sort_keys=True),
+                    "reproduction_steps": judged["minimal_sequence"],
                     "observed_behavior": judged["observed_behavior"],
                     "expected_behavior": judged["expected_behavior"],
                     "system_version": campaign["system_version"],
                     "status": "draft",
                 },
             )
-            self._conn.commit()
+            stored = True
         except DuplicateSequence:
-            pass
+            stored = False
+        if not stored and self._conn.execute("SELECT 1 FROM regression_cases WHERE exploit_id = ?", (judged["exploit_id"],)).fetchone():
+            return
+        insert_regression_case(
+            self._conn,
+            case_id=f"rc-{judged['exploit_id']}"[:64],
+            exploit_id=str(judged["exploit_id"]),
+            category=str(judged["category"]),
+            subcategory=subcategory,
+            invariant_id=invariant_id_for(subcategory),
+            expected_safe_behavior=str(judged["expected_behavior"]),
+            system_version=str(campaign["system_version"]),
+        )
+        canary = _CANARY.get(subcategory)
+        recorded = _target_evidence(transcript)
+        # Prefer the recorded target text. Fall back to the exploit evidence when the transcript has no target turn.
+        evidence = recorded or str(judged.get("observed_behavior", ""))
+        draft_report(self._conn, judged, held=is_false_positive(judged, evidence, canary))  # type: ignore[arg-type]
+        self._conn.commit()
+
+    def _replay_pending(self, correlation_id: str) -> None:
+        """Claim every pending or owned handoff, in recorded order, and replay every eligible case on the stub.
+
+        A missing stub is not a skip. The campaign halts before any case is dropped. A second pending handoff is
+        not left behind. A handoff claimed by another correlation id is left alone.
+        """
+        rows = self._conn.execute(
+            "SELECT id, status, claimed_by FROM version_handoffs WHERE status IN ('pending', 'claimed') ORDER BY id"
+        ).fetchall()
+        if not rows:
+            return
+        if self._stub is None:
+            self._stop(correlation_id, "target_unreachable", False, "regression suite has no stub")
+            raise ContractError("regression_detected", "regression suite has no stub")
+        for row in rows:
+            handoff_id, status, owner = int(row[0]), str(row[1]), row[2]
+            if status == "pending":
+                claimed = claim_handoff(self._conn, handoff_id, correlation_id)
+                if claimed != "claimed":
+                    continue
+            elif owner != correlation_id:
+                continue
+            outcome = run_suite(
+                self._conn, handoff_id, correlation_id, self._stub, reports_dir=self._reports_dir
+            )
+            if outcome.status == "predecessor_invalid":
+                self._stop(correlation_id, "regression_detected", False, "predecessor pin is not the recorded previous pin")
+                raise ContractError("regression_detected", "predecessor pin is not the recorded previous pin")
+            if outcome.status == "regression_detected" and outcome.detections:
+                detail = str(outcome.detections[0].get("detail", "regression_detected"))
+                self._stop(correlation_id, "regression_detected", False, detail)
+                raise ContractError("regression_detected", detail)
 
     def _accept(self, correlation_id: str, judged: Any) -> None:
-        """Harness receives the verdict only. No report is drafted. A no-op row is the record."""
+        """Harness receives the verdict only. The report was drafted in _store_exploit. A no-op row is the record."""
         if isinstance(judged, dict) and "verdict" in judged and "exploit_id" not in judged:
             validate("verdict", judged)
         log_run(self._conn, correlation_id, "harness", "running")
@@ -388,6 +451,14 @@ class CampaignLoop:
         return RunOutcome(
             correlation_id, "halted", error_code=code, detail=detail, sequences=int(campaign["sequences_started"])
         )
+
+
+def _target_evidence(transcript: object) -> str:
+    """The recorded target text. That is the canary evidence, not the transcript id."""
+    try:
+        return target_text(require_transcript(transcript)) or ""
+    except TranscriptRejected:
+        return ""
 
 
 def scripted_model(replies: Sequence[str]) -> ModelClient:

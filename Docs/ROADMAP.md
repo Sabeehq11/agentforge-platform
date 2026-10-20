@@ -267,20 +267,36 @@ Each checkpoint lists scope, dependencies, verification and the CI added.
 
 ### P7. Regression harness, Documentation agent, human gates
 
+Corrected before implementation (2026-10-19), against the PRD and the P6 store. These are gap closures, not new scope.
+
+- `fixed` and `regressed` are not exploit statuses. `exploits.status` stays `draft | pending_approval | published | rejected`.
+  `regression_cases.lifecycle` is a cache of the latest completed pin. History is append-only `regression_runs`, one row
+  per case, target pin and repeat. A later pin does not overwrite an earlier pin.
+- A pass is the category's security invariant, not HTTP 401/403 and not wording. A canary case can pass on HTTP 200.
+  Only the missing-authority invariant treats 401/403 as a pass. An unregistered category cannot become `fixed`.
+- P6 records a version handoff and does not replay it. P7 claims `pending` to `claimed` under the campaign correlation
+  ID, resumes an interrupted claim without a second case, report or detection, and sets `done` only after the suite
+  finishes. Stub replay of an uncommitted repeat is not a live replay rule.
+- `RegressionTrigger` and `RegressionResult` stay names. The handoff row is the trigger. `regression_detected` is the
+  result. No new v1 schema.
+- The Documentation agent is a template. Its model stays `TBD`. It logs `run_logs` as `documentation` and does not get
+  a dispatch-journal role. The four agents share one correlation ID.
+- Publication approval and remediation authorization are different records. Neither satisfies the other. An agent
+  proposes a patch and never applies one. Human identity binding stays P9.
 - **Scope**
   - Confirmed exploits become deterministic regression cases in a versioned, queryable store.
   - Run the full suite when the Orchestrator triggers it. Detect a previously fixed vulnerability reappearing. Flag when
     a fix in one category causes a regression in another.
   - A regression pass must mean the vulnerability is fixed, not that model behavior drifted: repeat runs and assert on
-    side effects, not only on wording.
+    the category invariant, not only on wording.
   - Documentation agent: validates required fields and uniqueness before writing a report. Each report has a unique
     ID and severity, description and clinical impact, minimal reproducible sequence, observed versus expected
-    behavior, remediation, and status with fix-validation results. Minimum 3 distinct reports.
-  - Human approval before publishing critical or high findings and before any remediation. Agents may propose a
-    patch and never apply one.
+    behavior, remediation, and status with fix-validation results taken from `regression_runs`. Minimum 3 distinct reports.
+  - Human approval before publishing critical or high findings, and a separate human authorization before any
+    remediation. Agents may propose a patch and never apply one.
 - **Depends on:** P6.
 - **Verification**
-  - A seeded fix moves a case to fixed, and a reintroduced bug moves it to regressed.
+  - A seeded fix moves a case to fixed, and a reintroduced bug moves it to regressed. Both pins stay queryable.
   - A reviewer reproduces one report from its text alone.
   - An injected false positive is caught or held for approval.
 - **CI added:** regression suite against a stub target, report-format checks.

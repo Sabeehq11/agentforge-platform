@@ -14,5 +14,6 @@ that supersedes the old one. Every ADR must list at least two rejected alternati
 | [006](006-observability.md) | Observability: own SQLite traces | accepted | Q11 |
 | [007](007-url-handling.md) | Target URL: quick tunnel with reviewed manual edits | accepted (provisional) | Q2 |
 | [008](008-dispatch-journal.md) | Dispatch journal, rate-limit handling and cost stop | accepted | Q9 |
+| [009](009-regression-harness.md) | Regression harness: stub suite, append-only runs, separate remediation gate | accepted | Q5, Q7 |
 
 Template: [TEMPLATE.md](TEMPLATE.md).

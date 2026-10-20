@@ -1,5 +1,5 @@
 ##
-# Platform CI (P0 through P5). Lint, typecheck, tests with a coverage floor, security scan,
+# Platform CI (P0 through P7). Lint, typecheck, tests with a coverage floor, security scan,
 # secret scan, markdown link check and a workflow guard. No secrets, no model calls, no request to the target: every
 # test runs with sockets disabled.
 # Live and paid runs are never part of this workflow. Later checkpoints add jobs and never remove one (ROADMAP 6).
@@ -95,3 +95,8 @@ jobs:
 
     - name: Orchestrator tests (scripted agents, no secrets, no network)
       run: python -m pytest tests/test_p6_journal.py tests/test_p6_state.py tests/test_p6_priority.py tests/test_p6_ratelimit.py tests/test_p6_cost.py tests/test_p6_handoff.py tests/test_p6_generator.py tests/test_p6_novelty.py tests/test_p6_caps.py tests/test_p6_variants.py tests/test_p6_trace.py tests/test_p6_identity.py tests/test_p6_envelope.py tests/test_p6_secrets.py -q
+
+    - name: Regression suite against a stub target and report-format checks (no live calls)
+      run: |
+        python -m pytest tests/test_p7_lifecycle.py tests/test_p7_invariants.py tests/test_p7_suite.py tests/test_p7_docs.py tests/test_p7_gates.py tests/test_p7_trace.py tests/test_p7_loop.py -q
+        python scripts/check_reports.py
