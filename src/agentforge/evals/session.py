@@ -246,7 +246,11 @@ class SessionClient:
         except RefusedByChokepoint:
             raise
         except OSError as exc:
-            raise SessionError("transport failed after the gates passed") from exc
+            # Class and errno only. The message can contain a URL, a header, or a body, so it is not stored.
+            errno = getattr(exc, "errno", None)
+            raise SessionError(
+                f"transport failed after the gates passed: {type(exc).__name__} errno={errno}"
+            ) from exc
 
     def verify_identity(self) -> None:
         """GET the login page and stop on a fingerprint mismatch or a redirect. No later call on failure."""
@@ -507,7 +511,9 @@ def _store_cookies(session: TargetSession, response: Response) -> None:
     session.cookie = "; ".join(f"{name}={value}" for name, value in current.items())
 
 
-_CONNECT_TIMEOUT = 10.0
+# http.client applies this to the socket for connect and for the later read. OpenEMR chat.php waits 45s
+# for the agent, so an authenticated chat must not be dropped before that upstream deadline.
+_SOCKET_TIMEOUT = 50.0
 _REDIRECTS = frozenset({301, 302, 303, 307, 308})
 # Test seam only. request() still runs first. Not read from the environment and not a live bypass.
 connection_opener: Callable[..., HTTPConnection] | None = None
@@ -519,7 +525,7 @@ def real_transport(
     headers: dict[str, str] | None = None,
     body: bytes | str | None = None,
     *,
-    timeout: float = _CONNECT_TIMEOUT,
+    timeout: float = _SOCKET_TIMEOUT,
 ) -> Response:
     """One HTTP call. Does not check allowlist, budget, or attestation; request() does that first.
 

@@ -19,7 +19,9 @@ from typing import Any, Literal
 from agentforge.evals.cases import Case, load_cases
 from agentforge.evals.login import LoginRequest
 from agentforge.evals.graders import (
+    CANARY_RULE,
     MAX_QUESTION,
+    canary_signal,
     grade_attack_count,
     grade_canary,
     grade_missing_authority,
@@ -51,9 +53,11 @@ class CaseResult:
     exercise: str
     outcome: Outcome
     detail: str
+    grader: str = ""
+    signal: str = ""
 
     def as_dict(self) -> dict[str, str]:
-        return {
+        body = {
             "case_id": self.case_id,
             "category": self.category,
             "subcategory": self.subcategory,
@@ -62,14 +66,41 @@ class CaseResult:
             "outcome": self.outcome,
             "detail": self.detail,
         }
+        if self.grader:
+            body["grader"] = self.grader
+            body["signal"] = self.signal
+        return body
 
 
-def _result(case: Case, outcome: Outcome, detail: str) -> CaseResult:
+def _result(
+    case: Case,
+    outcome: Outcome,
+    detail: str,
+    *,
+    grader: str = "",
+    signal: str = "",
+) -> CaseResult:
     if outcome not in _OUTCOMES:
         raise ValueError(f"unknown outcome {outcome}")
     return CaseResult(
-        case.case_id, case.category, case.subcategory, case.owasp_id, case.exercise, outcome, detail
+        case.case_id,
+        case.category,
+        case.subcategory,
+        case.owasp_id,
+        case.exercise,
+        outcome,
+        detail,
+        grader,
+        signal,
     )
+
+
+def _canary_evidence(text: str, canary: str) -> tuple[str, str]:
+    """Rule name and matched signal only. The response is not copied into either field."""
+    signal = canary_signal(text, canary)
+    if canary and canary in signal:
+        return CANARY_RULE, "none"
+    return CANARY_RULE, signal
 
 
 def summarize(results: tuple[CaseResult, ...]) -> dict[str, int]:
@@ -130,7 +161,8 @@ def replay(case: Case, transcript: str) -> CaseResult:
         if not case.canary:
             return _result(case, "error", "canary case has no canary")
         outcome = grade_canary(transcript, case.canary)
-        return _result(case, outcome, "replayed recorded transcript")  # type: ignore[arg-type]
+        grader, signal = _canary_evidence(transcript, case.canary)
+        return _result(case, outcome, "replayed recorded transcript", grader=grader, signal=signal)  # type: ignore[arg-type]
     if case.grader == "patient_boundary":
         outcome = grade_patient_boundary(transcript)
         return _result(case, outcome, "replayed recorded transcript")  # type: ignore[arg-type]
@@ -163,7 +195,8 @@ def grade_response(case: Case, response: Response | None, *, tool_names: tuple[s
         return _result(case, "error", f"target returned {response.status}; not retried")
     if case.grader == "canary" and case.canary:
         outcome = grade_canary(text, case.canary)
-        return _result(case, outcome, "graded target response")  # type: ignore[arg-type]
+        grader, signal = _canary_evidence(text, case.canary)
+        return _result(case, outcome, "graded target response", grader=grader, signal=signal)  # type: ignore[arg-type]
     if case.grader == "patient_boundary":
         outcome = grade_patient_boundary(text)
         return _result(case, outcome, "graded target response")  # type: ignore[arg-type]
@@ -359,6 +392,8 @@ def merge_results(results: tuple[CaseResult, ...], path: Path) -> tuple[CaseResu
                     str(raw["exercise"]),
                     raw["outcome"],
                     str(raw["detail"]),
+                    str(raw.get("grader", "")),
+                    str(raw.get("signal", "")),
                 )
             )
     by_id = {item.case_id: item for item in existing}

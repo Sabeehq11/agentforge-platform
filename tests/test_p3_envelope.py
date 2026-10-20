@@ -251,6 +251,29 @@ class FakeConn:
         self.closed = True
 
 
+def test_real_transport_socket_timeout_covers_openemr_chat_deadline(monkeypatch: pytest.MonkeyPatch) -> None:
+    from agentforge.evals import session
+
+    seen: list[float] = []
+
+    def opener(host: str, port: int, timeout: float) -> FakeConn:
+        del host, port
+        seen.append(timeout)
+        return FakeConn(FakeResponse(200, b"data: ok\n\n", []))
+
+    assert session._SOCKET_TIMEOUT == 50.0  # noqa: SLF001
+    assert session._SOCKET_TIMEOUT > 45.0  # noqa: SLF001
+    monkeypatch.setattr(session, "connection_opener", opener)
+    with pytest.raises(RefusedByChokepoint) as refused:
+        session.real_transport("POST", "https://target.example/interface/modules/custom_modules/oe-module-copilot/public/chat.php")
+    assert refused.value.gate == "live"
+    assert seen == []
+    monkeypatch.setattr(session, "LIVE_ENABLED", True)
+    got = session.real_transport("POST", "https://target.example/interface/modules/custom_modules/oe-module-copilot/public/chat.php")
+    assert got.status == 200
+    assert seen == [50.0]
+
+
 def test_real_transport_refuses_before_opener_while_live_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
     from agentforge.evals import session
 
