@@ -239,15 +239,15 @@ Documentation only. No target request, no model call, no new spend. `LIVE_ENABLE
 | D-2 | Full suite runs when the Orchestrator triggers it | P7 | partial | Stub suite claims a handoff (`src/agentforge/harness/suite.py`, `tests/test_p7_suite.py`). Live trigger is blocked |
 | D-3 | Detect a fixed vulnerability reappearing, and a fix in one category regressing another | P7 | partial | Stub evidence: `tests/test_p7_lifecycle.py`, `tests/test_p7_suite.py`. Not a live detection |
 | D-4 | A passing regression means fixed, not drifted: repeat runs, assert on side effects | P7 | partial | Three repeats and category invariants, including a legitimate HTTP 200 pass (`tests/test_p7_invariants.py`). Wording-only is not fixed. Not met on a live model |
-| D-5 | Answers to all six observability questions, queryable, and readable by the Orchestrator | P8 | not started | ADR-006 chooses SQLite traces. No trace store exists |
+| D-5 | Answers to all six observability questions, queryable, and readable by the Orchestrator | P8 | met | `src/agentforge/observe/queries.py`, `scripts/observe.py`, `tests/test_p8_queries.py`. Authored cases, exploits and regression cases stay separate. Overnight reconstruction stays E-15 |
 | D-6 | Data model for exploits, regression cases, run logs, coverage metrics | P2 | met | [schema.sql](../src/agentforge/store/schema.sql): all four tables. Closure audit 2026-10-17 |
 | D-7 | Data quality: unique id, required fields, no duplicate attack sequence | P2 constraints, P7 enforcement | partial | P2 constraints plus Documentation checks in `tests/test_p7_docs.py`. A duplicate sequence writes no report. Not met on a live report |
 | D-8 | Access control: who writes exploits, who reads, what approval precedes publication | P2 design, P9 enforcement | partial | P2 design met: [ACCESS_CONTROL.md](ACCESS_CONTROL.md). Insert refuses `published` (`test_published_insert_is_rejected`). Role-scoped enforcement is P9 |
 | D-9 | Migration of existing records without data loss, with a migration note per schema change | P2 | met | [migrate.py](../src/agentforge/store/migrate.py) refuses a missing note. Manual check: original row unchanged, new column populated. Note: [0001-initial-schema.md](migrations/0001-initial-schema.md) |
-| D-10 | SQL indexes on severity, category and system version, and a regression SLO verified in CI | P8 | not started | Applies, because ADR-005 chose SQLite. Q7 |
+| D-10 | SQL indexes on severity, category and system version, and a regression SLO verified in CI | P8 | met | Indexes already in `schema.sql`. Proof in [INDEXES.md](INDEXES.md). SLO is one `run_suite` call, `config/slo.yaml`, `scripts/check_slo.py`, D-014. Not a SQL timer |
 | D-11 | Queue depth and backup behavior | P6, only if a queue is used | not started | ADR-003 rejected a queue. The requirement does not apply unless that decision changes. Q7 |
-| D-12 | Baseline CPU, memory, latency and throughput for 100 cases plus the full regression suite | P8 | not started | |
-| D-13 | Load test of 100 consecutive cases against the live target, bottleneck named, fix documented | P8 | not started | Needs human approval and the cost cap |
+| D-12 | Baseline CPU, memory, latency and throughput for 100 cases plus the full regression suite | P8 | met | `evals/results/baseline-p8.json`. Offline `CampaignLoop` plus `run_suite`. Not a live-target result |
+| D-13 | Load test of 100 consecutive cases against the live target, bottleneck named, fix documented | P8 | not started | Blocked. Unblock conditions in [LOAD_TEST.md](LOAD_TEST.md). The mock baseline is not this test |
 
 ## Contracts and interfaces
 

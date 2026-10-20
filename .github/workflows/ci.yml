@@ -100,3 +100,6 @@ jobs:
       run: |
         python -m pytest tests/test_p7_lifecycle.py tests/test_p7_invariants.py tests/test_p7_suite.py tests/test_p7_docs.py tests/test_p7_gates.py tests/test_p7_trace.py tests/test_p7_loop.py -q
         python scripts/check_reports.py
+
+    - name: Regression SLO assertion against a stub suite (no live calls)
+      run: python scripts/check_slo.py

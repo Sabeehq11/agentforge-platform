@@ -110,8 +110,8 @@ PRD basis: a confirmed exploit becomes a deterministic case; detect reappearance
 
 PRD basis: the six observability questions, which must also be readable by the Orchestrator.
 
-- **Built.** `agent_spend` holds per-role reserved and incurred spend as separate columns (`src/agentforge/store/migrations/0002.sql`, `src/agentforge/safety/ledger.py`). The refusal log is `evals/results/refusals.log`. It is created at runtime by the live scripts (`scripts/live_campaign.py`, `scripts/live_agent.py`) on the first refused call, so it does not exist in a fresh clone. Stored results carry correlation ids (`evals/results/campaign-latest.json`, `evals/results/agent-live.json`), and `ledger_call_id` ties a live result to its ledger row. The four P2 tables exist: `exploits`, `regression_cases`, `run_logs`, `coverage_metrics`. ADR-006 chose our own SQLite traces over a hosted tool, so no third party receives transcripts.
-- **Planned (P8).** A query for each PRD question: categories tested and case counts, pass and fail by category and version, resilience trend, vulnerability status, cost per run and its scaling, and what each agent did in order. `run_logs` and `coverage_metrics` are populated by P6 and P7 and have no writer today.
+- **Built.** `agent_spend` holds per-role reserved and incurred spend as separate columns (`src/agentforge/store/migrations/0002.sql`, `src/agentforge/safety/ledger.py`). The refusal log is `evals/results/refusals.log`. It is created at runtime by the live scripts (`scripts/live_campaign.py`, `scripts/live_agent.py`) on the first refused call, so it does not exist in a fresh clone. Stored results carry correlation ids (`evals/results/campaign-latest.json`, `evals/results/agent-live.json`), and `ledger_call_id` ties a live result to its ledger row. The four P2 tables exist: `exploits`, `regression_cases`, `run_logs`, `coverage_metrics`. ADR-006 chose our own SQLite traces over a hosted tool, so no third party receives transcripts. `run_logs` is written by `log_run` in `src/agentforge/orchestrator/state.py`. `coverage_metrics` has a writer, `coverage_from` in `src/agentforge/orchestrator/loop.py`, and that writer has no caller, so the table stays empty unless a test inserts a row.
+- **Built (P8, read only).** `src/agentforge/observe/queries.py` answers the six PRD questions from existing rows. Authored cases, exploit rows and regression cases stay separate counts. Pass and fail use every `regression_runs` row as the denominator. Resilience compares shared case ids on adjacent recorded pins and returns `inconclusive` when that comparison is insufficient. Cost is incurred USD by role; reserved is not added. `python scripts/observe.py` prints the six answers and has no live path.
 
 Data flow, Built unless marked:
 
@@ -127,9 +127,9 @@ flowchart LR
     Rec --> Judge[Judge]
     Judge --> Draft[Draft exploit or verdict]
     Choke --> Ledger[(agent_spend ledger)]
-    Result -.-> Obs[P8 queries]
-    Ledger -.-> Obs
-    Obs -.-> Orch[Orchestrator, P6]
+    Result --> Obs[P8 queries]
+    Ledger --> Obs
+    Obs --> Orch[Orchestrator reads the same rows]
 ```
 
 ## F. Model selection rationale
@@ -156,13 +156,10 @@ PRD basis: a build-versus-configure record for each agent role is required befor
 PRD basis: cost, rate limits, queue and database constraints, and the 100 / 1K / 10K / 100K framing.
 
 - **Built.** SQLite with one shared ledger across processes, committed after every write (`src/agentforge/safety/ledger.py`). A per-run request cap (`src/agentforge/safety/rate.py`). A per-run attack cap and a $5 shared ceiling (`config/budget.yaml`).
-- **Planned.** The known limits are SQLite write contention (the reopen conditions in ADR-003 and ADR-005), the target's in-memory rate limiter, and target spend of about $0.05 per chat. P8 measures the bottleneck. This file states no throughput number.
+- **Built (P8, offline).** `evals/results/baseline-p8.json` records CPU, peak RSS, orchestration latency, stub-reply latency and exploit-storage write throughput for exactly 100 cases through `CampaignLoop`, then the same fields for one `run_suite` replay. Storage throughput counts only `exploits` and `regression_runs` inserts. Suite end-to-end throughput is a separate field and is not storage throughput. The file is `live: false`. It does not measure LLM latency and does not name a live bottleneck.
+- **Planned.** The known limits are SQLite write contention (the reopen conditions in ADR-003 and ADR-005), the target's in-memory rate limiter, and target spend of about $0.05 per chat. The live bottleneck is still unmeasured. D-13 stays blocked.
 - Execution is single-process and sequential. No concurrency is supported or tested. Queue documentation (D-11) does not apply while ADR-003 stands.
-- **Provisional assumptions**, all unmeasured until P8:
-  - **Volume.** A run is capped at `max_attacks_per_run: 20` and the shared ceiling is $5. At about $0.05 per target chat (the Week 2 figure cited in `Docs/ROADMAP.md`, not remeasured here), $5 buys roughly 100 chats before model cost.
-  - **Latency.** A target chat takes seconds to tens of seconds (`THREAT_MODEL.md`). Platform orchestration and storage latency are unmeasured.
-  - **Concurrency.** One run at a time, because of the shared ledger, the target's in-memory limiter and SQLite. Any parallelism is a P8 question.
-  - These are planning figures, not baselines. The load test (D-13) and baselines (D-12) replace them.
+- **Volume.** A run is capped at `max_attacks_per_run: 20` and the shared ceiling is $5. The offline baseline used 25 campaigns to process 100 cases without raising that cap. At about $0.05 per target chat (the Week 2 figure, not remeasured here), $5 cannot pay for a live 100-chat run.
 
 ## I. Judge uncertainty, false positives and false negatives
 

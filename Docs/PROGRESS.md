@@ -304,16 +304,21 @@ are unverified (G-2).
   - GitHub Actions has not run on these files. Nothing was committed or pushed. Live replay stays blocked.
 
 ### P8. Observability, performance, load
-- Status: not started. Depends on: P6, P7.
-- [ ] Queryable answers to every PRD observability question
-- [ ] Baselines for 100 cases plus full regression suite
+- Status: offline work done. Depends on: P6, P7. The live load test is blocked.
+- [x] Queryable answers to every PRD observability question
+- [x] Baselines for 100 cases plus full regression suite
 - [ ] 100-case live load test (needs approval), bottleneck and fix
-- [ ] Regression SLO and index documentation
-- [ ] Verify: baselines committed
-- [ ] Verify: SLO asserted in CI
-- [ ] Verify: per-agent cost attribution
-- [ ] CI: SLO assertion
-- Evidence:
+- [x] Regression SLO and index documentation
+- [x] Verify: baselines committed
+- [x] Verify: SLO asserted in CI
+- [x] Verify: per-agent cost attribution
+- [x] CI: SLO assertion
+- Evidence (2026-10-20, Python 3.12.15, `/tmp/agentforge-venv`, no network, no provider, no spend):
+  - `python scripts/observe.py` prints six answers. Q1 keeps authored cases, exploits and regression cases separate. Q3 is `inconclusive` on one pin. Queries do not select transcripts or reproduction steps.
+  - `evals/results/baseline-p8.json`: `live: false`, `cases: 100`, `path: campaign_loop_stub`, 25 campaigns, max `attacks_done` 4 against `max_attacks_per_run` 20. CPU, peak RSS, orchestration latency, stub latency and storage-write throughput are separate fields for the loop and for `run_suite`. Suite end-to-end throughput is a different field. LLM latency is `not_measured`. This file does not satisfy D-13. Q2 displayed rates keep the `regression_runs` denominator, including a zero numerator.
+  - `python scripts/check_slo.py` prints `stub_regression_suite` and exits 0. A `--ceiling 0` run exits 1. `--select-only` exits 1. The timed call is `run_suite`, not `EXPLAIN`.
+  - `python scripts/regress.py --live` still exits 2. `LIVE_ENABLED` and `PROVIDER_ENABLED` remain `False`. No budget or allowlist edit. No new spend-log row.
+  - Index proof is in [INDEXES.md](INDEXES.md). The live-test block and its unblock conditions are in [LOAD_TEST.md](LOAD_TEST.md).
 
 ### P9. Platform security and CI completion
 - Status: not started. Depends on: P2 onward.

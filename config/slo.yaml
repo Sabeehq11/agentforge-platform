@@ -1,0 +1,7 @@
+# Platform choice, not a PRD quote. See Docs/DECISIONS.md D-014.
+# The measured operation is one run_suite call against the in-process stub, not a SQL SELECT
+# and not EXPLAIN QUERY PLAN. See Docs/INDEXES.md.
+operation: stub_regression_suite
+cases: 100
+repeats: 3
+ceiling_seconds: 30

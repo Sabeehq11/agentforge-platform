@@ -2,7 +2,7 @@
 
 Adversarial AI security platform for the AgentForge Clinical Co-Pilot (Gauntlet AI, Week 3).
 
-**Status: P6 (orchestrator, scripted), on top of P0 to P5.** The committed code makes no request to the target
+**Status: P8 (observability, offline), on top of P0 to P7.** The committed code makes no request to the target
 and calls no model. `LIVE_ENABLED` and `PROVIDER_ENABLED` are both `False` in committed code, and an environment
 variable cannot turn either on. Anything not listed under "Built" is **(planned)** and must not be described as
 working.
@@ -61,7 +61,7 @@ Cloudflare quick tunnel question is Q2 in [DECISIONS.md](Docs/DECISIONS.md).
 - **P6:** a live Orchestrator run. The scripted path is built. Live replay is blocked.
 - **P7 live replay:** the stub harness and Documentation template are built. A live regression against the
   deployed target is not. Reports in `reports/` are platform drafts, not deployed findings.
-- **P8:** observability queries and load tests.
+- **P8 live load test:** the six queries, the stub SLO and the offline 100-case baseline are built. The live 100-case run is not. See [LOAD_TEST.md](Docs/LOAD_TEST.md).
 - **P9:** the platform's own access control and security review.
 - Later checkpoints are in [ROADMAP.md](Docs/ROADMAP.md). Progress and evidence: [PROGRESS.md](Docs/PROGRESS.md).
   Decisions and open questions: [DECISIONS.md](Docs/DECISIONS.md).
@@ -84,13 +84,14 @@ pytest
 python scripts/check_evals.py
 python scripts/regress.py
 python scripts/check_reports.py
+python scripts/observe.py
 ```
 
 This validates every case against `evals/schema/case.schema.json`, scans fixtures for PHI patterns, and runs the
 suite in dry-run mode. It exits 0 and prints `OK 7 cases ... dry-run fabricated no pass`. A dry run never reports a
 `pass`: a case that needs a target is `not_run`. Replay of a recorded transcript is covered by `tests/test_evals.py`.
 `scripts/regress.py` refuses `--live` and does not open a socket. `scripts/check_reports.py` checks the three draft
-reports.
+reports. `scripts/observe.py` prints the six observability answers from the local store and has no live path.
 
 Local checks that CI also runs:
 

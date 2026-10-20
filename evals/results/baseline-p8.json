@@ -1,0 +1,41 @@
+{
+  "attack_loop": {
+    "campaigns": 25,
+    "cases": 100,
+    "cpu_seconds": 1.001077,
+    "exploit_storage_rows": 100,
+    "exploit_storage_rows_per_second": 37414.083,
+    "exploit_storage_write_seconds": 0.002673,
+    "llm_latency": "not_measured",
+    "max_attacks_done": 4,
+    "max_attacks_per_run": 20,
+    "orchestration_latency_seconds": 1.022609,
+    "peak_rss_bytes": 37175296,
+    "stub_reply_latency_label": "not_llm_latency",
+    "stub_reply_latency_seconds": 0.00064,
+    "suite_end_to_end_rows": null,
+    "suite_end_to_end_rows_per_second": null
+  },
+  "cases": 100,
+  "host": "macOS-26.6.2-arm64-arm-64bit",
+  "live": false,
+  "path": "campaign_loop_stub",
+  "python": "3.12.15",
+  "regression_suite": {
+    "cases": 100,
+    "cpu_seconds": 0.038787,
+    "exploit_storage_rows": 300,
+    "exploit_storage_rows_per_second": 91272.242,
+    "exploit_storage_write_seconds": 0.003287,
+    "llm_latency": "not_measured",
+    "orchestration_latency_seconds": 0.039003,
+    "peak_rss_bytes": 37175296,
+    "replays": 300,
+    "status": "done",
+    "stub_reply_latency_label": "not_llm_latency",
+    "stub_reply_latency_seconds": 0.000261,
+    "suite_end_to_end_rows": 300,
+    "suite_end_to_end_rows_per_second": 7642.566
+  },
+  "satisfies_d13": false
+}
