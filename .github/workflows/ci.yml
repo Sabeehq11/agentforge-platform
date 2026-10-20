@@ -1,5 +1,5 @@
 ##
-# Platform CI (P0 through P7). Lint, typecheck, tests with a coverage floor, security scan,
+# Platform CI (P0 through P10). Lint, typecheck, tests with a coverage floor, security scan,
 # secret scan, markdown link check and a workflow guard. No secrets, no model calls, no request to the target: every
 # test runs with sockets disabled.
 # Live and paid runs are never part of this workflow. Later checkpoints add jobs and never remove one (ROADMAP 6).
@@ -109,3 +109,6 @@ jobs:
 
     - name: Platform self-scan (coverage floor, mypy, Bandit, pip-audit)
       run: python scripts/self_scan.py
+
+    - name: P10 evidence files (presence only; no live or paid call)
+      run: python scripts/check_p10_evidence.py

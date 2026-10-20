@@ -36,7 +36,8 @@ def test_a_simulated_advisory_fails_the_audit_gate(monkeypatch, tmp_path: Path) 
     assert any("bandit" in args for args in calls)
 
 
-def test_a_clean_simulated_scan_exits_zero(monkeypatch, tmp_path: Path) -> None:
+def test_a_clean_simulated_scan_exits_zero(monkeypatch, tmp_path: Path, capsys) -> None:
     module = _load()
     monkeypatch.setattr(module, "_run", lambda _root, _args: 0)
     assert module.main(["self_scan.py", str(tmp_path)]) == 0
+    assert capsys.readouterr().out.startswith("date: ")

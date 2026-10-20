@@ -22,7 +22,7 @@ The kickoff time is not recorded in the repo, so the Architecture Defense deadli
 
 | Control | Status | Evidence |
 |---|---|---|
-| Target allowlist, default deny, one HTTP chokepoint | in progress | Chokepoint, refusal log and header/body transport exist. `config/allowlist.yaml` is still empty. No live transport |
+| Target allowlist, default deny, one HTTP chokepoint | in progress | Chokepoint, refusal log and header/body transport exist. `config/allowlist.yaml` has localhost only (`127.0.0.1:8300`), not a public host. No live transport |
 | Target identity check | in progress | Fingerprint check and fake login-page GET exist. The read-only GET of the running login page was not made. E-3 stays partial |
 | Synthetic-data fixtures and transcript scan | in progress | Synthetic fixtures and the PHI scan exist and are tested. No live transcript has been stored |
 | Per-run and per-day USD caps, attack-count cap, approval token | in progress | `budget.py` and tests in P0. Not approved for any run |
@@ -56,9 +56,9 @@ are unverified (G-2).
 | Social post | Final | not started | P11 |
 | Build-versus-configure record | Architecture Defense | in progress | P0. `Docs/BUILD_VS_CONFIGURE.md`, tool claims unverified |
 | Defense evidence packet | Architecture Defense | in progress | P0. `Docs/DEFENSE_PACKET.md` draft |
-| Triage lab | Final | not started | P10 |
-| ATO-style evidence packet | Final | not started | P10 |
-| Integration packet | Final, peer dependent (Q4) | not started | P10 |
+| Triage lab | Final | offline-met | P10. Simulated. Not a live scan |
+| ATO-style evidence packet | Final | offline-met | P10. Q6 unconfirmed |
+| Integration packet | Final, peer dependent (Q4) | unconfirmed | P10 stub packet only. X-3 and X-4 stay PRD-outstanding |
 
 ## Checkpoints
 
@@ -321,7 +321,7 @@ are unverified (G-2).
   - Index proof is in [INDEXES.md](INDEXES.md). The live-test block and its unblock conditions are in [LOAD_TEST.md](LOAD_TEST.md).
 
 ### P9. Platform security and CI completion
-- Status: in review. Depends on: P2 onward. Not a live exercise. P10 is not started.
+- Status: in review. Depends on: P2 onward. Not a live exercise. P10 is a later checkpoint and is in progress, not started by P9.
 - [x] Coverage floor, mypy baseline, pip-audit, Bandit, self-scan
 - [x] Auth model, role-scoped database access
 - [x] Scheduled and target-change triggers with protected secrets
@@ -339,15 +339,21 @@ are unverified (G-2).
   - `scripts/orchestrate.py --live` and `scripts/regress.py --live` still exit 2. `LIVE_ENABLED` and `PROVIDER_ENABLED` remain `False`. No ATO packet was assembled.
 
 ### P10. Required exercises and evidence
-- Status: not started. Depends on: P6 to P9.
-- [ ] Triage lab, 10+ findings with dispositions
-- [ ] ATO-style evidence packet
-- [ ] Integration packet, labeled peer or stub (Q4)
-- [ ] Failure drills
-- [ ] AI cost analysis at 100, 1K, 10K, 100K
-- [ ] Verify: each drill yields its typed error
-- [ ] Verify: projections use measured cost
-- Evidence:
+- Status: in progress. Depends on: P6 to P9. Not done: X-3, X-4, and D-13 stay PRD-outstanding.
+- [x] Triage lab, 10+ findings with dispositions (offline-met)
+- [x] ATO-style evidence packet (offline-met; Q6 unconfirmed)
+- [ ] Integration packet, labeled peer or stub (Q4). Stub packet written. X-3 and X-4 stay unconfirmed, not offline-met
+- [x] Failure drills (offline-met)
+- [x] AI cost analysis at 100, 1K, 10K, 100K (offline-met; `$0.05` is reservation-based)
+- [x] Verify: each drill yields its typed error
+- [x] Verify: projections use a reservation-based target unit, with verified provider charges and the inferred orphan kept apart
+- Evidence: 2026-10-20. PRD pages 11–13 re-read. No live call and no provider call. `LIVE_ENABLED` and `PROVIDER_ENABLED` remain `False`.
+  - X-1 offline-met: `evals/triage/scan-report.json`, `scripts/check_triage.py`. PRD-outstanding: none for the lab sentence.
+  - X-2 offline-met: `Docs/ATO_PACKET.md`. PRD-outstanding: Q6.
+  - X-3, X-4 PRD-outstanding: `Docs/INTEGRATION_PACKET.md` is a contract conformance test, not peer integration.
+  - X-5 offline-met: `tests/test_p10_drills.py` calls `judge_transcript` (there is no `Judge.grade`) and `Ledger.reserve` at the shared ceiling. `evals/results/drills-p10.json` is `live: false`.
+  - X-6 offline-met: `Docs/COST_ANALYSIS.md` reconciles to `agent_spend` call ids. PRD-outstanding: D-13.
+  - D-13 stays not started. P10 does not name a bottleneck.
 
 ### P11. Final delivery
 - Status: not started. Depends on: everything.

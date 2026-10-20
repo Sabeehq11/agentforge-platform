@@ -247,7 +247,7 @@ Documentation only. No target request, no model call, no new spend. `LIVE_ENABLE
 | D-10 | SQL indexes on severity, category and system version, and a regression SLO verified in CI | P8 | met | Indexes already in `schema.sql`. Proof in [INDEXES.md](INDEXES.md). SLO is one `run_suite` call, `config/slo.yaml`, `scripts/check_slo.py`, D-014. Not a SQL timer |
 | D-11 | Queue depth and backup behavior | P6, only if a queue is used | not started | ADR-003 rejected a queue. `regression_jobs` is one SQLite table and one worker, not that queue. Q7 |
 | D-12 | Baseline CPU, memory, latency and throughput for 100 cases plus the full regression suite | P8 | met | `evals/results/baseline-p8.json`. Offline `CampaignLoop` plus `run_suite`. Not a live-target result |
-| D-13 | Load test of 100 consecutive cases against the live target, bottleneck named, fix documented | P8 | not started | Blocked. Unblock conditions in [LOAD_TEST.md](LOAD_TEST.md). The mock baseline is not this test |
+| D-13 | Load test of 100 consecutive cases against the live target, bottleneck named, fix documented | P8 | not started | PRD-outstanding. Not offline-met. Blocked. Unblock conditions in [LOAD_TEST.md](LOAD_TEST.md). The mock baseline is not this test. P10 does not name a bottleneck |
 
 ## Contracts and interfaces
 
@@ -286,15 +286,23 @@ Documentation only. No target request, no model call, no new spend. `LIVE_ENABLE
 
 | Id | PRD requirement | Checkpoint | Status | Evidence |
 |---|---|---|---|---|
-| X-1 | Triage lab: at least ten findings across critical, high, medium and false positive, each with a disposition | P10 | not started | |
-| X-2 | ATO-style evidence packet, separate from the architecture doc | P10 | not started | Treated as distinct from the Defense packet (Q6, unconfirmed) |
-| X-3 | Integration with a peer's agent through the published contract only, no shared source | P10 | unconfirmed | Depends on a peer existing. Q4. If none, the packet is labeled stub conformance (D-008) and is not called peer integration |
-| X-4 | Lab: build one component, inherit another | P10 | unconfirmed | Same dependency as X-3 |
-| X-5 | Failure drills: target unreachable, budget exceeded, judge timeout, each yielding its typed error | P10 | not started | Error schemas are C-4 |
-| X-6 | AI cost analysis: actual spend, and projections at 100, 1K, 10K and 100K from measured per-run cost | P10 | not started | Spend log in [PROGRESS.md](PROGRESS.md) is empty. Actual-spend-at-MVP is the plan (Q5) |
+| X-1 | Triage lab: at least ten findings across critical, high, medium and false positive, each with a disposition | P10 | offline-met | `evals/triage/scan-report.json`, `scripts/check_triage.py`. PRD-outstanding: none for the lab sentence. M-9, M-10, and M-11 stay partial. Not a live scan |
+| X-2 | ATO-style evidence packet, separate from the architecture doc | P10 | offline-met | [ATO_PACKET.md](ATO_PACKET.md), distinct from the Defense packet. Auth table cites enforcement. Principals stay unauthenticated. PRD-outstanding: Q6 unconfirmed. Does not close H-1, E-6, or G-2 |
+| X-3 | Integration with a peer's agent through the published contract only, no shared source | P10 | unconfirmed | PRD-outstanding. Q4 unanswered. [INTEGRATION_PACKET.md](INTEGRATION_PACKET.md) is a contract conformance test (D-008), not peer integration, and is not offline-met for this row |
+| X-4 | Lab: build one component, inherit another | P10 | unconfirmed | PRD-outstanding. Same dependency as X-3. The packet says the inherited component is the published v1 schema, consumed in-repo. A peer component was not inherited |
+| X-5 | Failure drills: target unreachable, budget exceeded, judge timeout, each yielding its typed error | P10 | offline-met | `tests/test_p10_drills.py` drives the existing handlers, including `Ledger.reserve` at the shared ceiling and `judge_transcript`. There is no `Judge.grade`. `evals/results/drills-p10.json` is `live: false`. PRD-outstanding: none for this sentence. Not a live host failure |
+| X-6 | AI cost analysis: actual spend, and projections at 100, 1K, 10K and 100K from measured per-run cost | P10 | offline-met | [COST_ANALYSIS.md](COST_ANALYSIS.md) reconciles every `agent_spend` call id. Ledger incurred is `$0.1022038`. Verified provider charges are `$0.0019128`. The orphan stays inferred. `$0.05` scales are reservation-based, not measured target cost. PRD-outstanding: D-13 |
 | X-7 | Demo video, 3 to 5 minutes, live attacks, one per submission | P11 | unconfirmed | Final is required. Whether MVP needs its own is Q5 |
 | X-8 | Social post tagging @GauntletAI | P11 | not started | PRD says final only |
 | X-9 | AI-use disclosure in `ARCHITECTURE.md`: every AI role, the check or approval after each AI decision, remaining risk | P5 | met | The "AI-use disclosure" table in [ARCHITECTURE.md](../ARCHITECTURE.md) lists each AI role, its check or approval and its remaining risk |
+
+## How to update this file
+
+## P10 offline note (2026-10-20)
+
+Re-read the Week 3 PRD, pages 11–13. No live call and no provider call. `LIVE_ENABLED` and `PROVIDER_ENABLED` stayed false.
+
+Offline-met: X-1, X-2, X-5, X-6. PRD-outstanding: X-3, X-4 (Q4, no peer), D-13 (five unblock conditions in [LOAD_TEST.md](LOAD_TEST.md) unchanged), and Q6 for the ATO packet. X-3, X-4, and D-13 are not offline-met. P10 stays in progress. P11 was not started.
 
 ## How to update this file
 

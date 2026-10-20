@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import subprocess
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 
@@ -20,6 +21,8 @@ def _run(root: Path, args: list[str]) -> int:
 
 def main(argv: list[str]) -> int:
     root = Path(argv[1]).resolve() if len(argv) > 1 else Path(__file__).resolve().parents[1]
+    # Taken when this process starts the scan, not typed into the evidence file.
+    print(f"date: {datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')}")
     steps = (
         [sys.executable, "-m", "pytest", "--cov=agentforge", "--cov-report=term-missing", "--cov-fail-under=85"],
         [sys.executable, "-m", "mypy", "src"],

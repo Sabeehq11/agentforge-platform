@@ -1,0 +1,27 @@
+{
+  "live": false,
+  "note": "Envelopes returned by the existing handlers in tests/test_p10_drills.py. Not a live host failure.",
+  "envelopes": [
+    {
+      "error_code": "target_unreachable",
+      "correlation_id": "corr-p10-drill",
+      "schema_version": "v1",
+      "retryable": false,
+      "detail": "identity_mismatch"
+    },
+    {
+      "error_code": "budget_exceeded",
+      "correlation_id": "corr-p10-drill",
+      "schema_version": "v1",
+      "retryable": false,
+      "detail": "attack-count cap would be exceeded"
+    },
+    {
+      "error_code": "judge_timeout",
+      "correlation_id": "corr-p10-drill",
+      "schema_version": "v1",
+      "retryable": true,
+      "detail": "needs_human_review"
+    }
+  ]
+}

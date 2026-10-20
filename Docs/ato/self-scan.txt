@@ -1,0 +1,8 @@
+date: 2026-10-20T20:24:59Z
+command: python scripts/self_scan.py
+exit_code: 0
+pytest: 524 passed, coverage 89.54%, floor 85
+mypy: Success: no issues found in 63 source files
+bandit: no failed test at -ll -iii; nosec warnings on existing B608 lines only
+pip-audit: No known vulnerabilities found. agentforge-platform 0.0.1 was skipped because it is not on PyPI.
+self-scan: 4 step(s), 0 failure(s)
