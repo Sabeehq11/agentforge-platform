@@ -92,3 +92,6 @@ jobs:
 
     - name: Judge evaluation on the labeled set (recorded or stub responses only)
       run: python -m pytest tests/test_p4_judge.py -q
+
+    - name: Orchestrator tests (scripted agents, no secrets, no network)
+      run: python -m pytest tests/test_p6_journal.py tests/test_p6_state.py tests/test_p6_priority.py tests/test_p6_ratelimit.py tests/test_p6_cost.py tests/test_p6_handoff.py tests/test_p6_generator.py tests/test_p6_novelty.py tests/test_p6_caps.py tests/test_p6_variants.py tests/test_p6_trace.py tests/test_p6_identity.py tests/test_p6_envelope.py tests/test_p6_secrets.py -q

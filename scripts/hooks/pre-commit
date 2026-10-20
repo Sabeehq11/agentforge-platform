@@ -1,0 +1,4 @@
+#!/bin/sh
+# Opt-in local gate. Enable with scripts/install_hooks.py. CI remains the enforced gate.
+cd "$(dirname "$0")/../.." || exit 1
+python3 scripts/secret_scan.py

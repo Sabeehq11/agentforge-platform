@@ -269,22 +269,23 @@ are unverified (G-2).
   - Not CI-verified on GitHub until the operator pushes. CI on `22e7983` passed (user-reported).
 
 ### P6. Orchestrator and multi-agent run
-- Status: not started. Depends on: P2 to P4.
-- [ ] Orchestrator reads coverage, findings, regressions
-- [ ] Persisted run state, queue behavior if a queue exists
-- [ ] Rate-limit handling, cost halt or redirect, no-priority fallback
-- [ ] Regression trigger on target version change
-- [ ] Verify: end-to-end trace under one correlation ID
-- [ ] Verify: killed agent gives typed error and resumable state
-- [ ] Verify: novelty measure
-- [ ] CI: state-machine tests with scripted agents
-- Evidence:
+- Status: scripted evidence only. Depends on: P2 to P4. Not met on a live run.
+- [x] Orchestrator reads coverage, findings, regressions (scripted: `tests/test_p6_priority.py`)
+- [x] Persisted run state. No queue: ADR-003 rejected one, so D-11 does not apply
+- [x] Rate-limit handling, cost halt or redirect, no-priority fallback (scripted: `tests/test_p6_ratelimit.py`, `tests/test_p6_cost.py`, `tests/test_p6_priority.py`)
+- [x] Regression trigger recorded on target version change. Replay is P7 (`tests/test_p6_handoff.py`)
+- [ ] Verify: end-to-end trace under one correlation ID. Partial: Orchestrator, Red Team, executor and Judge only. Documentation is deferred to P7
+- [x] Verify: killed agent gives typed error and resumable state (scripted: `tests/test_p6_journal.py`)
+- [x] Verify: novelty measure (scripted: `tests/test_p6_novelty.py`, `tests/test_p6_variants.py`)
+- [x] CI: state-machine tests with scripted agents
+- Evidence: scripted, no network, no provider, no spend. The all-agents trace is partial. The Documentation leg is deferred to P7, which must extend the P6 trace through the Documentation agent. No live run.
 
 ### P7. Regression harness, Documentation agent, human gates
 - Status: not started. Depends on: P6.
 - [ ] Versioned, queryable exploit store and regression cases
 - [ ] Reappearance and cross-category regression detection
 - [ ] Repeat runs, side-effect assertions
+- [ ] Extend the P6 trace through the Documentation agent
 - [ ] Documentation agent with field and uniqueness validation, 3+ reports
 - [ ] Human approval gates
 - [ ] Verify: fixed then regressed sequence

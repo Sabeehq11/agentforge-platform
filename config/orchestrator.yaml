@@ -1,0 +1,40 @@
+# Orchestrator policy (P6). No key, token or credential belongs in this file.
+# Values here can only tighten the safety envelope. The $5.00 shared ceiling, budget.yaml caps, the chokepoint,
+# LIVE_ENABLED and PROVIDER_ENABLED are not configurable from here.
+
+weights:
+  open_high_finding: 100
+  regression_component: 60
+  coverage_gap: 40
+  low_pass_rate: 20
+  low_pass_rate_below: 0.5
+
+# Fixed order used by the no-priority fallback when no category has run before.
+fallback_order: [TM-PI, TM-EX, TM-DS, TM-SC, TM-TM, TM-ID]
+
+retry:
+  max_attempts_per_step: 3
+  max_attempts_per_campaign: 6
+  base_delay_s: 1.0
+  max_delay_s: 30.0
+
+stop:
+  after_attacks: 5
+  spend_fraction: 0.25
+  max_redirects: 1
+
+limits:
+  max_sequences_per_campaign: 10
+  max_turns: 3            # hard ceiling 4
+  max_turns_hard_ceiling: 4
+  max_rejections: 2
+  max_mutations_per_parent: 2
+  max_mutation_depth: 2
+
+novelty:
+  threshold: 0.35
+
+variant_campaign:
+  variants_requested: 10       # valid 1 to 10, hard ceiling 10
+  max_total_rejections: 10
+  max_turns_per_variant: 1

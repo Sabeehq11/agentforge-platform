@@ -2,7 +2,7 @@
 
 Adversarial AI security platform for the AgentForge Clinical Co-Pilot (Gauntlet AI, Week 3).
 
-**Status: P5 (architecture and MVP pack), on top of P0 to P4.** The committed code makes no request to the target
+**Status: P6 (orchestrator, scripted), on top of P0 to P5.** The committed code makes no request to the target
 and calls no model. `LIVE_ENABLED` and `PROVIDER_ENABLED` are both `False` in committed code, and an environment
 variable cannot turn either on. Anything not listed under "Built" is **(planned)** and must not be described as
 working.
@@ -29,8 +29,11 @@ only over HTTP. See [TARGET_FREEZE.md](Docs/TARGET_FREEZE.md).
   and TM-DS, deterministic graders, and a session client for the target login and chat.
 - **Judge** (`src/agentforge/agents/judge.py`): deterministic rules first, a model only for an ambiguous transcript.
   A labeled set and a drift procedure are in `evals/judge/` and [JUDGE_DRIFT.md](Docs/JUDGE_DRIFT.md).
-- **Red Team, partial** (`src/agentforge/agents/red_team.py`): `SeedMutator`, a deterministic mutator. It calls no
-  model.
+- **Orchestrator, scripted** (`src/agentforge/orchestrator/`, `scripts/orchestrate.py`): a crash-safe dispatch journal,
+  ranking, bounded retries and a cost stop. `python scripts/orchestrate.py --dry-run` runs one scripted campaign.
+  The all-agents trace is partial: Documentation is deferred to P7.
+- **Red Team** (`src/agentforge/agents/red_team_generator.py`): strict model-output validation and a novelty check.
+  Tests use a scripted model. `SeedMutator` remains for the P4 path.
 - **Model config** (`config/models.yaml`, `src/agentforge/models_config.py`): Red Team and Judge must use different
   model families. The probe record is [MODEL_PROBE.md](Docs/MODEL_PROBE.md).
 - **CI** (`.github/workflows/ci.yml`): lint, mypy, tests with a coverage floor, Bandit, secret scan, link check,

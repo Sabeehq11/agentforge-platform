@@ -49,6 +49,15 @@ class SessionError(Exception):
     """A session step failed before a chat attack could be graded. Not a pass."""
 
 
+class TargetStatusError(SessionError):
+    """The target answered 429, 503 or a billable 400. The status and raw Retry-After header are kept verbatim."""
+
+    def __init__(self, status: int, retry_after: str | None) -> None:
+        self.status = status
+        self.retry_after = retry_after
+        super().__init__(f"target returned {status}; not retried")
+
+
 @dataclass
 class ChatTurn:
     status: int
@@ -367,7 +376,7 @@ class SessionClient:
             if call_id is not None and self.ledger is not None:
                 self.ledger.release(call_id)
             self.budget.release(reserve, attack=False)
-            raise SessionError(f"target returned {response.status}; not retried")
+            raise TargetStatusError(response.status, _header(response, "retry-after"))
         if call_id is not None and self.ledger is not None:
             self.ledger.incur(call_id, reserve)
             self.last_target_call_id = call_id
@@ -448,6 +457,13 @@ def _cookie_pairs(response: Response) -> tuple[tuple[str, str], ...]:
             if name.strip():
                 pairs.append((name.strip(), cookie_value.strip()))
     return tuple(pairs)
+
+
+def _header(response: Response, name: str) -> str | None:
+    for key, value in (response.headers or {}).items():
+        if key.lower() == name:
+            return str(value)
+    return None
 
 
 def _store_cookies(session: TargetSession, response: Response) -> None:

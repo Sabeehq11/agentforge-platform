@@ -13,5 +13,6 @@ that supersedes the old one. Every ADR must list at least two rejected alternati
 | [005](005-state-store.md) | State store: SQLite | accepted | Q12 |
 | [006](006-observability.md) | Observability: own SQLite traces | accepted | Q11 |
 | [007](007-url-handling.md) | Target URL: quick tunnel with reviewed manual edits | accepted (provisional) | Q2 |
+| [008](008-dispatch-journal.md) | Dispatch journal, rate-limit handling and cost stop | accepted | Q9 |
 
 Template: [TEMPLATE.md](TEMPLATE.md).

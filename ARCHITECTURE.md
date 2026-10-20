@@ -94,8 +94,8 @@ PRD basis: versioned schemas, typed errors, contract tests, and a migration note
 
 PRD basis: reads coverage gaps, open findings and regressions; halts when spend produces no signal; has a no-priority fallback; triggers regression when the target changes.
 
-- **Built.** No Orchestrator. Only the `Orchestrator` protocol, where `None` means no priority (`src/agentforge/agents/interfaces.py`), the `CampaignRequest` schema, and a `coverage_metrics` table that nothing writes yet (`src/agentforge/store/schema.sql`).
-- **Planned (P6), as policy.** A deterministic priority order: an uncovered category, then an open critical or high finding, then a recent regression, then the lowest coverage. A stop rule: a set number of consecutive graded cases with no new signal, or the $5 shared ceiling or the attack cap reached. A no-priority fallback. A regression trigger when `system_version` changes. These are mostly rules. A language model is optional (`Docs/BUILD_VS_CONFIGURE.md`).
+- **Built (P6).** `src/agentforge/orchestrator/` ranks from persisted evidence only (`priority.py`), stops or redirects once when spend yields no validated signal (`stop.py`), and journals every external effect write-ahead (`journal.py`, [ADR-008](Docs/adr/008-dispatch-journal.md)). A version change writes a handoff and does not replay it (`versions.py`). Weights and bounds are in `config/orchestrator.yaml`.
+- **Partial.** The all-agents trace is partial: Orchestrator, Red Team, the executor and the Judge are traced under one correlation ID (`trace.py`). The Documentation leg is deferred to P7. P6 does not mark that trace met.
 
 ## D. Exploit-to-regression lifecycle
 

@@ -5,8 +5,10 @@ fields observed_behavior, severity, exploitability and regression_flag are attac
 as evidence and are not copied into the verdict.
 
 A decisive rule does not call a model. An ambiguous transcript uses the injected model, which is a fixture
-unless the caller supplies OpenRouterJudgeModel. This module does not construct a provider client and does
-not open a socket.
+unless the caller supplies OpenRouterJudgeModel. A real provider call is constructed only when PROVIDER_ENABLED
+is true and fixture_only is false. That call is a journaled external effect when a campaign journal is bound,
+and otherwise goes through the provider transport, which re-checks PROVIDER_ENABLED. The stub path does not
+open a socket and does not write a dispatch row.
 """
 
 from __future__ import annotations
@@ -262,6 +264,53 @@ class RulesJudge:
         self.model_calls = 0
         self.last_exploit: ConfirmedExploit | None = None
         self.last_call_id: str | None = None
+        self._journal: object | None = None
+        self._journal_conn: object | None = None
+        self._journal_policy: object | None = None
+        self._alloc_step: object | None = None
+        self._journal_sleep: object | None = None
+
+    def bind_dispatch(
+        self, journal: object | None, conn: object | None, policy: object | None, alloc_step: object | None, sleep: object | None
+    ) -> None:
+        """Attach the campaign journal. Only a real provider call is then a journaled send. A stub call is not.
+
+        Passing None unbinds. The probe and unit-test paths stay unbound and keep their own ledger reservation.
+        """
+        self._journal = journal
+        self._journal_conn = conn
+        self._journal_policy = policy
+        self._alloc_step = alloc_step
+        self._journal_sleep = sleep
+
+    def _complete(self, correlation_id: str, prompt: str, model: JudgeModel) -> str:
+        """Call the model. A provider model with a bound journal is the send of a journaled step.
+
+        No row is written unless that send runs. The probe path has no journal and keeps its own reservation.
+        A campaign that bound a journal refuses a provider call outside it.
+        """
+        if self._journal is None or type(model).__name__ != "OpenRouterJudgeModel":
+            return model.complete(prompt)
+        from agentforge.orchestrator.journal import Outcome
+        from agentforge.orchestrator.retry import run_step
+
+        step = int(self._alloc_step())  # type: ignore[operator,misc]
+
+        def make_send(_attempt: int):  # type: ignore[no-untyped-def]
+            def send() -> Outcome:
+                label = model.complete(prompt)
+                cost = getattr(model, "last_cost_usd", None)
+                return Outcome(output=label, incurred_usd=float(cost or 0.0), http_status=200)
+
+            return send
+
+        outcome = run_step(
+            self._journal, self._journal_conn, self._journal_policy, correlation_id, step,  # type: ignore[arg-type]
+            role="judge", kind="judge_model",
+            intent=f"judge provider {prompt.split(chr(10), 1)[0]}", reserve_usd=self._reserve_usd,
+            make_send=make_send, sleep=self._journal_sleep,  # type: ignore[arg-type]
+        )
+        return outcome.output
 
     def judge(self, result: AttackResult) -> Verdict | ConfirmedExploit | ErrorEnvelope:
         """Protocol method. An AttackResult alone is not evidence, so this returns an error, not a verdict."""
@@ -316,7 +365,9 @@ class RulesJudge:
                 model = OpenRouterJudgeModel(self._model.model)
             try:
                 self.model_calls += 1
-                label = model.complete(recorded.transcript_id + "\n" + (target_text(recorded) or ""))
+                label = self._complete(
+                    result["correlation_id"], recorded.transcript_id + "\n" + (target_text(recorded) or ""), model
+                )
                 reported = getattr(model, "last_cost_usd", None)
                 if reported is not None and reported > self._reserve_usd:
                     self._ledger.release(call_id)
