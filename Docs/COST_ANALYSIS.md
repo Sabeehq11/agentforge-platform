@@ -14,13 +14,15 @@ D-13 was measured on the Week 1 stub route. [evals/results/d13-load.json](../eva
 
 Every ledger row is one object, including zero-cost incurred rows and released rows. A call id appears once. No historical row is rewritten.
 
-- Ledger `incurred` sums to `$0.1022038`. The spend log rounds that to `$0.1022`. The rounded total is not added on top of the rows.
-- Two target rows, `target-chat-5` and `target-chat-685a5e0c6be2`, are `incurred` at `$0.05` each. That `$0.1000` is a reservation written into the incurred column. The target's bill is not independently attested, so `provider_charge_usd` is null. It is not counted again as reserved.
+- The ledger has 16 rows. Ledger `incurred` sums to `$0.1522038`. The spend log rounds that to `$0.1522`. The rounded total is not added on top of the rows.
+- Three target rows, `target-chat-5`, `target-chat-685a5e0c6be2` and `target-chat-78107c0e6f4e`, are `incurred` at `$0.05` each. That `$0.1500` is a reservation written into the incurred column (reserved and incurred are both `0.05`). The target's bill is not independently attested, so `provider_charge_usd` is null. It is not counted again as reserved.
+- A fourth target row, `target-chat-46ccade7e901`, is `released` at `$0`. A released reservation is not a charge and adds nothing.
+- Rows 15 and 16 (`target-chat-46ccade7e901` and `target-chat-78107c0e6f4e`) were added to this analysis on 2026-10-21. They were already in the ledger and the earlier 14-row analysis did not list them. Rows 1 to 14 are unchanged. The ledger stores no timestamp, campaign or run link for either row, and the journal and campaign tables are empty, so which run wrote them is not recorded here. They are classified from the ledger's own role and state only.
 - Verified provider charges sum to `$0.0019128`: `diag-judge-112a52e0c6ee` `$0.000975`, `probe-judge-c7e70e4a93b1` `$0.000291`, `probe-judge-41f064d9f8a3` `$0.000291`, `probe-red_team-b4816368425d` `$0.0000228`, and `judge-9adefda49ebf` `$0.000333`.
 - `probe-judge-a6b9e5ffc3f3` is ledger `incurred` at `$0.000291` and inferred once. `Ledger.settle_orphan` wrote that amount from the other calls with the same request. No per-call provider cost was stored, so it is not a verified charge and it is not in the projection unit.
-- `$0.0019128 + $0.000291 + $0.1000 = $0.1022038`. Each row is in one of those three sums.
+- `$0.0019128 + $0.000291 + $0.1500 = $0.1522038`. Each row is in one of those three sums. Released rows add `$0` to all three.
 
-Released rows at `$0` (`probe-judge-dfc0d15b53f2`, `probe-judge-827472582cd8`, `judge-90c1a7a39e1a`, `probe-judge-d9b846c62b60`) and two zero-cost incurred red-team rows are in the file so a missing call id fails the checker. They add nothing.
+Released rows at `$0` (`probe-judge-dfc0d15b53f2`, `probe-judge-827472582cd8`, `judge-90c1a7a39e1a`, `probe-judge-d9b846c62b60`, `target-chat-46ccade7e901`) and two zero-cost incurred red-team rows are in the file so a missing call id fails the checker. They add nothing.
 
 ## Projection output
 
@@ -37,6 +39,6 @@ Quoted from `scripts/check_cost.py`. Target figures are reservation-based. Provi
 
 ## Architectural change at each scale
 
-- 100 reservation-based target chats are `$5.00` reserved. That meets the shared ceiling before provider samples and before the `$0.1022038` already committed. The change for a billable run is a reviewed budget increase. It is not made here. The measured D-13 stub run spent `$0` and does not remove H-1, E-3, E-6, or S-1. This `$5.00` is not measured target cost.
+- 100 reservation-based target chats are `$5.00` reserved. That meets the shared ceiling before provider samples and before the `$0.1522038` already committed. The change for a billable run is a reviewed budget increase. It is not made here. The measured D-13 stub run spent `$0` and does not remove H-1, E-3, E-6, or S-1. This `$5.00` is not measured target cost.
 - 1K: `max_attacks_per_run` is 100, so this is not one run. The change already in the architecture is many capped sequential campaigns. ADR-003 and ADR-005 name SQLite write contention as the reopen condition. The measured D-13 bottleneck was the agent's 60-chat rolling minute, not SQLite. That limiter still applies at this scale. Pacing stays inside the published window. The limiter is not raised here.
 - 10K and 100K: the same single-process SQLite limit and the target's in-memory rate limiter, as [ARCHITECTURE.md](../ARCHITECTURE.md) section H already states. No new database. No queue.

@@ -1,7 +1,7 @@
 {
   "source": "data/agentforge.sqlite3 agent_spend, read only",
-  "log_total_rounded_usd": 0.1022,
-  "note": "ledger_state and ledger_usd are the SQLite row. provider_charge_usd is a verified provider bill, or null when the ledger amount is a reservation written as incurred or an inferred settle_orphan. The rounded log total is not added on top of the rows. Zero-cost incurred and released rows are listed so the checker can see every call id. They add nothing.",
+  "log_total_rounded_usd": 0.1522,
+  "note": "ledger_state and ledger_usd are the SQLite row. provider_charge_usd is a verified provider bill, or null when the ledger amount is a reservation written as incurred or an inferred settle_orphan. The rounded log total is not added on top of the rows. Rows 15 and 16 (`target-chat-46ccade7e901` released, `target-chat-78107c0e6f4e` incurred) were added on 2026-10-21 to match the ledger; rows 1 to 14 are unchanged. Zero-cost incurred and released rows are listed so the checker can see every call id. They add nothing.",
   "rows": [
     {
       "call_id": "target-chat-5",
@@ -100,6 +100,20 @@
       "ledger_usd": 0.000333,
       "provider_charge_usd": 0.000333,
       "projection_basis": "none"
+    },
+    {
+      "call_id": "target-chat-46ccade7e901",
+      "ledger_state": "released",
+      "ledger_usd": 0.0,
+      "provider_charge_usd": 0.0,
+      "projection_basis": "none"
+    },
+    {
+      "call_id": "target-chat-78107c0e6f4e",
+      "ledger_state": "incurred",
+      "ledger_usd": 0.05,
+      "provider_charge_usd": null,
+      "projection_basis": "reservation"
     }
   ],
   "units": {

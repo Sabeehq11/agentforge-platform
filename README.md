@@ -66,7 +66,7 @@ only over HTTP. See [TARGET_FREEZE.md](Docs/TARGET_FREEZE.md).
 - The Judge was measured on four labeled items and one provider-scored ambiguous item. That is not a rate.
 - D-13: 100 of 100 completed on the Week 1 stub route, `live: true`, `zero_cost_stub: true`, measured spend `$0`.
   Not a provider-model run. Details are in [LOAD_TEST.md](Docs/LOAD_TEST.md).
-- Spend to date is $0.1022 of the $5.00 shared ceiling. See the spend log in [PROGRESS.md](Docs/PROGRESS.md).
+- Spend to date is $0.1522 of the $5.00 shared ceiling (16 ledger rows; $0.1500 of it is three target reservations written as incurred). See the spend log in [PROGRESS.md](Docs/PROGRESS.md).
   The `$0.05` projection unit is a reservation, not the D-13 measurement.
 - GitHub Actions passed on commit `22e7983` (reported by the operator). Later commits, including `17827fb`, are
   not CI-verified in this repo until a run log exists. This pass does not push.

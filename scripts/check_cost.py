@@ -18,11 +18,11 @@ ROOT = Path(__file__).resolve().parents[1]
 PATH = ROOT / "Docs" / "cost" / "unit-costs.json"
 LEDGER = ROOT / "data" / "agentforge.sqlite3"
 SCALES = (100, 1_000, 10_000, 100_000)
-LEDGER_INCURRED = 0.1022038
+LEDGER_INCURRED = 0.1522038
 VERIFIED_PROVIDER = 0.0019128
 INFERRED = 0.000291
-RESERVATION_WRITTEN_AS_INCURRED = 0.1000
-ROUNDED = 0.1022
+RESERVATION_WRITTEN_AS_INCURRED = 0.1500
+ROUNDED = 0.1522
 
 
 def load() -> dict[str, object]:
@@ -89,7 +89,7 @@ def reconcile(data: dict[str, object], stored: list[tuple[str, str, float]]) -> 
     if abs(inferred - INFERRED) > 1e-9:
         problems.append(f"inferred {inferred} != {INFERRED}")
     if abs(reserved_as_incurred - RESERVATION_WRITTEN_AS_INCURRED) > 1e-9:
-        problems.append("reservation written as incurred does not equal 0.1000")
+        problems.append("reservation written as incurred does not equal 0.1500")
     if abs(verified + inferred + reserved_as_incurred - ledger_sum) > 1e-9:
         problems.append("verified, inferred, and reservation amounts do not add to the ledger once")
     if data.get("log_total_rounded_usd") != ROUNDED:
