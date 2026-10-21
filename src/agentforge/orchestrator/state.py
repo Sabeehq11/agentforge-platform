@@ -49,8 +49,22 @@ def log_run(
         conn.commit()
 
 
-def open_campaign(conn: sqlite3.Connection, request: CampaignRequest, *, system_version: str) -> None:
-    """Insert a campaign row in phase selecting. Refuses a second open campaign and a reused correlation id."""
+def open_campaign(
+    conn: sqlite3.Connection,
+    request: CampaignRequest,
+    *,
+    system_version: str,
+    category_pinned: bool = True,
+    requested_mode: str | None = None,
+) -> None:
+    """Insert a campaign row in phase selecting. Refuses a second open campaign and a reused correlation id.
+
+    category_pinned defaults to true so an existing caller still attacks request["category"]. A false value
+    keeps that category as a valid placeholder. Rank chooses the first attack. requested_mode is None for the
+    one-turn default or "multi_turn"; it is stored so a resume keeps it. It is not a contract field.
+    """
+    if requested_mode not in (None, "multi_turn"):
+        raise ValueError("requested_mode must be None or multi_turn")
     row = conn.execute("SELECT correlation_id FROM campaigns WHERE phase NOT IN ('done', 'halted') LIMIT 1").fetchone()
     if row is not None and row[0] != request["correlation_id"]:
         raise CampaignOpen("a campaign is already open")
@@ -59,10 +73,15 @@ def open_campaign(conn: sqlite3.Connection, request: CampaignRequest, *, system_
         with conn:
             conn.execute(
                 """
-                INSERT INTO campaigns (correlation_id, request_json, phase, system_version, created_at, updated_at)
-                VALUES (?, ?, 'selecting', ?, ?, ?)
+                INSERT INTO campaigns (
+                    correlation_id, request_json, phase, system_version, category_pinned, requested_mode,
+                    created_at, updated_at
+                ) VALUES (?, ?, 'selecting', ?, ?, ?, ?, ?)
                 """,
-                (request["correlation_id"], json.dumps(request, sort_keys=True), system_version, when, when),
+                (
+                    request["correlation_id"], json.dumps(request, sort_keys=True), system_version,
+                    1 if category_pinned else 0, requested_mode, when, when,
+                ),
             )
             log_run(conn, request["correlation_id"], "orchestrator", "queued", commit=False)
     except sqlite3.IntegrityError as exc:

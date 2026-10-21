@@ -117,14 +117,27 @@ def p6_store() -> sqlite3.Connection:
     return conn
 
 
-def p6_campaign(conn: sqlite3.Connection, correlation_id: str = "corr-p6", **overrides: object) -> dict[str, object]:
-    """A validated CampaignRequest, opened as a campaign row."""
+def p6_campaign(
+    conn: sqlite3.Connection,
+    correlation_id: str = "corr-p6",
+    *,
+    category_pinned: bool = True,
+    requested_mode: str | None = None,
+    **overrides: object,
+) -> dict[str, object]:
+    """A validated CampaignRequest, opened as a campaign row. Unpinned keeps the category as a placeholder.
+
+    requested_mode is a store column, not a contract field. None is the one-turn default.
+    """
     from agentforge.contracts.validate import validate
     from agentforge.orchestrator.state import open_campaign
 
     body = {**campaign_request(), "correlation_id": correlation_id, "message_id": "m-" + correlation_id, **overrides}
     validate("campaign_request", body)
-    open_campaign(conn, body, system_version=str(body["target_pin"]))  # type: ignore[arg-type]
+    open_campaign(
+        conn, body, system_version=str(body["target_pin"]),  # type: ignore[arg-type]
+        category_pinned=category_pinned, requested_mode=requested_mode,
+    )
     return body
 
 

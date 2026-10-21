@@ -24,6 +24,7 @@ from agentforge.orchestrator.drift_gate import JudgeDrift, check_judge_drift
 from agentforge.orchestrator.journal import Journal, UnknownOutcome
 from agentforge.orchestrator.policy import Config, validate_variants
 from agentforge.orchestrator.priority import next_category
+from agentforge.orchestrator.retry import Halt
 from agentforge.orchestrator.sequence import PreflightRefused, SequenceResult, SequenceRunner
 from agentforge.orchestrator.signals import record_signal
 from agentforge.orchestrator.state import (
@@ -109,8 +110,13 @@ class CampaignLoop:
         validate("campaign_request", body)
         return body  # type: ignore[return-value]
 
-    def run(self, correlation_id: str, *, mode: str = "novel", variants: int | None = None) -> RunOutcome:
-        """Drive one campaign to done or halted. An unknown outcome halts retryable and is never replayed."""
+    def run(self, correlation_id: str, *, mode: str | None = None, variants: int | None = None) -> RunOutcome:
+        """Drive one campaign to done or halted. An unknown outcome halts retryable and is never replayed.
+
+        mode=None selects per attack: mutation when an unclaimed Judge partial is eligible, otherwise the campaign's
+        stored requested_mode (multi_turn) or novel (one turn). An explicit mode is used as given. resume passes
+        None, so the stored request is what a resumed campaign continues with.
+        """
         campaign = require_campaign(self._conn, correlation_id)
         request = request_of(campaign)
         self._check_identity(correlation_id, request)
@@ -131,7 +137,7 @@ class CampaignLoop:
             # Reconciliation found a call that may have left the process. Nothing more is sent, so no identity GET.
             return self._stop(correlation_id, "target_unreachable", True, f"unknown_outcome {exc.call_id}")
         self._require_identity(correlation_id)
-        return self._ordinary(correlation_id, "novel")
+        return self._ordinary(correlation_id, None)
 
     # identity and version ----------------------------------------------------------------------------------
     def _check_identity(self, correlation_id: str, request: CampaignRequest) -> None:
@@ -162,12 +168,20 @@ class CampaignLoop:
         self._runner.identity_calls += 1
 
     # ordinary loop -----------------------------------------------------------------------------------------
-    def _ordinary(self, correlation_id: str, mode: str) -> RunOutcome:
+    def _ordinary(self, correlation_id: str, mode: str | None) -> RunOutcome:
         request = request_of(require_campaign(self._conn, correlation_id))
         tried: set[str] = set()
-        # The opened request names the category under test. Ranking fills current_category only when it is unset,
-        # and a redirect moves it. Neither overrides an explicit request.
-        current = require_campaign(self._conn, correlation_id)["current_category"] or request["category"]
+        # A pinned request names the first category. An unpinned placeholder does not. Rank fills it once.
+        # A stored current_category, including one a redirect already wrote, is not replaced.
+        campaign = require_campaign(self._conn, correlation_id)
+        current = campaign["current_category"]
+        if not current and int(campaign["category_pinned"]) == 0:
+            ranked = self.next_request(correlation_id)
+            if ranked is None:
+                return self._stop(correlation_id, "no_findings_in_window", False, "nothing attackable")
+            current = ranked["category"]
+        elif not current:
+            current = request["category"]
         self._conn.execute(
             "UPDATE campaigns SET current_category = ? WHERE correlation_id = ?", (current, correlation_id)
         )
@@ -205,30 +219,55 @@ class CampaignLoop:
             redirected["category"] = nxt
             request = redirected  # type: ignore[assignment]
 
-    def _attack_until_stop(self, correlation_id: str, request: CampaignRequest, mode: str) -> RunOutcome | None:
+    def _attack_until_stop(
+        self, correlation_id: str, request: CampaignRequest, mode: str | None
+    ) -> RunOutcome | None:
         cap = min(int(request["attack_count_cap"]), self._config.limits.max_sequences_per_campaign)
+        blocked: set[str] = set()
         while int(require_campaign(self._conn, correlation_id)["sequences_started"]) < cap:
             decision = decide(self._conn, correlation_id, self._config.stop, float(request["per_run_usd_cap"]))
             if decision.action != "continue":
                 return None
-            parent = self._eligible_parent(correlation_id, request["category"]) if mode == "mutation" else None
-            if mode == "mutation" and parent is None:
+            # Reselect after a claimed mutation so the next attack is not stuck on a used parent.
+            chosen = mode if mode is not None else self._select_mode(correlation_id, request["category"], blocked)
+            parent = self._eligible_parent(correlation_id, request["category"]) if chosen == "mutation" else None
+            if chosen == "mutation" and parent is None:
                 return None
             try:
-                generated = self._generator.generate(request, mode, parent=parent)
+                generated = self._generator.generate(request, chosen, parent=parent)
             except GenerationStopped as exc:
-                pass
                 if exc.halt is not None:
-                    return self._from_halt(correlation_id, exc.halt)
-                return None
+                    return self._from_halt(correlation_id, exc.halt.halt)  # GenerationStopped.halt is a StepHalt
+                if mode is not None or chosen != "mutation":
+                    # The campaign's own mode produced nothing. A requested multi-turn is not quietly run as one turn.
+                    return None
+                # A mutation produced nothing. Do not select it again for this category.
+                blocked.add(chosen)
+                continue
             outcome = self._execute_and_judge(correlation_id, generated)
             if outcome is not None:
                 return outcome
         return None
 
+    def _select_mode(self, correlation_id: str, category: str, blocked: set[str] | None = None) -> str:
+        """Mutation for an unclaimed eligible partial. Otherwise the campaign's stored request.
+
+        The stored request is multi_turn when the campaign asked for it, and novel (one turn) otherwise. It is read
+        from the campaign row, so a resumed campaign keeps it.
+        """
+        if "mutation" not in (blocked or set()) and self._eligible_parent(correlation_id, category) is not None:
+            return "mutation"
+        requested = require_campaign(self._conn, correlation_id).get("requested_mode")
+        return "multi_turn" if requested == "multi_turn" else "novel"
+
     def _eligible_parent(self, correlation_id: str, category: str) -> Parent | None:
         rows = self._conn.execute(
-            "SELECT id FROM signals WHERE correlation_id = ? AND category = ? AND verdict = 'partial' ORDER BY id",
+            """
+            SELECT id FROM signals
+            WHERE correlation_id = ? AND category = ? AND verdict = 'partial'
+              AND id NOT IN (SELECT signal_id FROM mutation_claims)
+            ORDER BY id
+            """,
             (correlation_id, category),
         ).fetchall()
         for (signal_id,) in rows:
@@ -255,7 +294,9 @@ class CampaignLoop:
             return self._stop(correlation_id, "target_unreachable", True, f"unknown_outcome {exc.call_id}")
         if executed.halt is not None and executed.transcript is None:
             return self._from_halt(correlation_id, executed.halt)
-        self._generator.persist(request_of(require_campaign(self._conn, correlation_id)), generated)
+        self._generator.persist(
+            request_of(require_campaign(self._conn, correlation_id)), generated, claim_parent=True
+        )
         bump(self._conn, correlation_id, "attacks_done")
         if executed.transcript is None:
             return None
@@ -278,6 +319,14 @@ class CampaignLoop:
             self._conn, result, judged, executed.transcript,
             parent_id=generated.parent_signal_id, depth=generated.depth,
         )
+        if _graded(judged):
+            campaign = require_campaign(self._conn, correlation_id)
+            coverage_from(
+                self._conn,
+                str(campaign["system_version"]),
+                str(result["category"]),
+                fail=judged.get("verdict") == "fail" or judged.get("status") == "draft",
+            )
         if isinstance(judged, dict):
             self._verdicts.append(dict(judged))
         if isinstance(judged, dict) and judged.get("status") == "draft" and "exploit_id" in judged:
@@ -404,7 +453,7 @@ class CampaignLoop:
                 if exc.kind == "rejections":
                     break
                 if exc.halt is not None:
-                    return self._from_halt(correlation_id, exc.halt)
+                    return self._from_halt(correlation_id, exc.halt.halt)  # GenerationStopped.halt is a StepHalt
                 break
             outcome = self._execute_and_judge(correlation_id, generated)
             if outcome is not None:
@@ -445,7 +494,7 @@ class CampaignLoop:
         return None
 
     # endings -----------------------------------------------------------------------------------------------
-    def _from_halt(self, correlation_id: str, typed: Any) -> RunOutcome:
+    def _from_halt(self, correlation_id: str, typed: Halt) -> RunOutcome:
         return self._stop(correlation_id, str(typed.code), bool(typed.retryable), str(typed.detail))
 
     def _finish(self, correlation_id: str, detail: str = "") -> RunOutcome:
@@ -486,21 +535,24 @@ def scripted_model(replies: Sequence[str]) -> ModelClient:
     return _Client()
 
 
-def coverage_from(conn: sqlite3.Connection, correlation_id: str, system_version: str, category: str) -> None:
-    """Write coverage only from a graded, executor-recorded result. Passes and fails both count."""
-    row = conn.execute(
-        "SELECT COUNT(*), SUM(verdict = 'fail') FROM signals WHERE correlation_id = ? AND category = ?",
-        (correlation_id, category),
-    ).fetchone()
-    fails = int(row[1] or 0)
-    cases = int(require_campaign(conn, correlation_id)["attacks_done"])
+def _graded(judged: Any) -> bool:
+    """A verdict or a confirmed exploit. An error envelope is not coverage."""
+    return isinstance(judged, dict) and "error_code" not in judged and (
+        "verdict" in judged or judged.get("status") == "draft"
+    )
+
+
+def coverage_from(conn: sqlite3.Connection, system_version: str, category: str, *, fail: bool) -> None:
+    """Add one graded result to the version row. A later campaign must not replace these counts."""
     conn.execute(
         """
         INSERT INTO coverage_metrics (category, system_version, case_count, pass_count, fail_count)
-        VALUES (?, ?, ?, ?, ?)
+        VALUES (?, ?, 1, ?, ?)
         ON CONFLICT (category, system_version) DO UPDATE SET
-            case_count = excluded.case_count, pass_count = excluded.pass_count, fail_count = excluded.fail_count
+            case_count = case_count + 1,
+            fail_count = fail_count + excluded.fail_count,
+            pass_count = (case_count + 1) - (fail_count + excluded.fail_count)
         """,
-        (category, system_version, cases, max(0, cases - fails), fails),
+        (category, system_version, 0 if fail else 1, 1 if fail else 0),
     )
     conn.commit()

@@ -2,7 +2,8 @@
 """Run one orchestrated campaign. Dry-run is the default and uses scripted agents. No network unless live gates pass.
 
 --dry-run prints the trace for one scripted campaign. --trace reads an existing campaign. --resume continues a
-retryable halt, and --accept-unknown settles one unknown call through the ledger. A live run is refused unless
+retryable halt, and --accept-unknown settles one unknown call through the ledger. --unpinned lets rank choose the
+first category and --multi-turn requests multi-turn attacks; both are dry-run only. A live run is refused unless
 LIVE_ENABLED, an unexpired operator approval, the allowlist and the identity check all pass. This script never sets
 those switches.
 """
@@ -47,6 +48,42 @@ def _scripted_model(count: int):  # type: ignore[no-untyped-def]
     return ScriptedModel([model_json(pool[i % len(pool)], tag=f"v{i}") for i in range(count)])
 
 
+class _SeedAwareModel:
+    """Scripted, offline stand-in for the Red Team model, used only for --unpinned and --multi-turn dry-runs.
+
+    The default dry-run keeps its fixed one-category script. A ranked or multi-turn campaign needs a reply whose
+    subcategory and turn count match what the generator asked for, so this reads the prompt the generator built.
+    It never opens a socket and never costs anything.
+    """
+
+    def __init__(self) -> None:
+        from tests.fixtures import DISTINCT_TEXTS
+
+        self._pool = [text for text in DISTINCT_TEXTS if text != DISTINCT_TEXTS[5]]
+        self._used = 0
+
+    def complete(self, prompt: str):  # type: ignore[no-untyped-def]
+        import re
+
+        from agentforge.agents.red_team_generator import ModelReply
+        from tests.fixtures import model_json
+
+        mode = re.search(r"Mode: (\w+)\.", prompt)
+        subcategory = re.search(r"Seed subcategory: (TM-[A-Z]+-\d+)\.", prompt)
+        marker = re.search(r"planted marker (\S+) in", prompt)
+        count = 2 if mode is not None and mode.group(1) == "multi_turn" else 1
+        turns = []
+        for _ in range(count):
+            text = self._pool[self._used % len(self._pool)]
+            self._used += 1
+            turns.append(text)
+        if marker is not None:
+            turns[-1] = turns[-1].replace("CANARY-AF-PI1", marker.group(1))
+        body = json.loads(model_json(turns[0], subcategory.group(1) if subcategory else "TM-PI-1", f"dry{self._used}"))
+        body["turns"] = turns
+        return ModelReply(json.dumps(body), 0.0)
+
+
 def _seed_parent(conn: sqlite3.Connection, correlation_id: str) -> None:
     """One synthetic persisted Judge partial, so a dry-run variant campaign has an eligible parent.
 
@@ -84,15 +121,25 @@ def _seed_parent(conn: sqlite3.Connection, correlation_id: str) -> None:
     conn.commit()
 
 
-def _open(conn: sqlite3.Connection, correlation_id: str, variants: int | None) -> None:
+def _open(
+    conn: sqlite3.Connection,
+    correlation_id: str,
+    variants: int | None,
+    *,
+    unpinned: bool = False,
+    multi_turn: bool = False,
+) -> None:
     from tests.fixtures import campaign_request
     from agentforge.contracts.validate import validate
 
     body = {**campaign_request(), "correlation_id": correlation_id, "message_id": "m-" + correlation_id}
     if variants is not None:
         body["attack_count_cap"] = max(int(body["attack_count_cap"]), variants)  # type: ignore[arg-type]
-    validate("campaign_request", body)
-    open_campaign(conn, body, system_version=str(body["target_pin"]))  # type: ignore[arg-type]
+    validate("campaign_request", body)  # the v1 body is unchanged. Pinning and mode are store columns, not fields.
+    open_campaign(
+        conn, body, system_version=str(body["target_pin"]),  # type: ignore[arg-type]
+        category_pinned=not unpinned, requested_mode="multi_turn" if multi_turn else None,
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -101,6 +148,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--live", action="store_true", help="refused unless the existing gates pass")
     parser.add_argument("--variant-campaign", action="store_true")
     parser.add_argument("--variants", type=int, default=None)
+    parser.add_argument("--unpinned", action="store_true", help="let rank choose the first category (dry-run)")
+    parser.add_argument("--multi-turn", action="store_true", help="request multi-turn attacks and keep them on resume (dry-run)")
     parser.add_argument("--trace", metavar="ID")
     parser.add_argument("--resume", metavar="ID")
     parser.add_argument("--accept-unknown", metavar="CALL_ID")
@@ -113,6 +162,9 @@ def main(argv: list[str] | None = None) -> int:
         except ConfigError as exc:
             print(f"refused before any call: {exc}")
             return 2
+    if (args.unpinned or args.multi_turn) and (args.variant_campaign or args.resume or args.trace):
+        print("refused before any call: --unpinned and --multi-turn open a new ordinary campaign only.")
+        return 2
     if args.live:
         if not LIVE_ENABLED:
             print("refused: LIVE_ENABLED is false. No network call was made.")
@@ -134,12 +186,13 @@ def main(argv: list[str] | None = None) -> int:
     ledger = Ledger(conn, budget)
     journal = Journal(conn, ledger)
     count = args.variants or 1
-    _open(conn, args.correlation_id, args.variants)
+    _open(conn, args.correlation_id, args.variants, unpinned=args.unpinned, multi_turn=args.multi_turn)
     if args.variant_campaign and not args.live:
         _seed_parent(conn, args.correlation_id)
     seeds = load_cases()
+    model = _SeedAwareModel() if args.unpinned or args.multi_turn else _scripted_model(max(count, 10))
     generator = RedTeamGenerator(
-        conn, journal, config, _scripted_model(max(count, 10)), seeds,
+        conn, journal, config, model, seeds,
         alloc_step=iter(range(1, 500)).__next__, sleep=lambda _s: None, reserve_usd=0.0,
     )
     from tests.fixtures import FakeTarget, answer, p6_client
@@ -152,7 +205,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     judge = RulesJudge(
         str(ROOT / "config" / "models.yaml"), ledger, stub=StubJudgeModel(),
-        canaries={"TM-PI-1": "CANARY-AF-PI1"}, fixture_only=True,
+        canaries={"TM-PI-1": "CANARY-AF-PI1", "TM-PI-3": "CANARY-AF-PI3"}, fixture_only=True,
     )
     loop = CampaignLoop(conn, journal, config, generator, runner, judge, seeds, observed_pin="9f03654")
     if args.resume:

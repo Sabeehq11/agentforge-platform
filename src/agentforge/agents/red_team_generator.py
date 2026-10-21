@@ -340,8 +340,12 @@ class RedTeamGenerator:
             "" if row is None else row.call_id,
         )
 
-    def persist(self, request: CampaignRequest, generated: Generated) -> int:
-        """Store an accepted attack so later novelty checks and parent child counts see it. User turns only."""
+    def persist(self, request: CampaignRequest, generated: Generated, *, claim_parent: bool = False) -> int:
+        """Store an accepted attack so later novelty checks and parent child counts see it. User turns only.
+
+        claim_parent writes the mutation claim in this same transaction. The loop sets it. A direct caller does not,
+        so a parent can still have more than one stored child up to the existing child cap.
+        """
         with self._conn:
             cursor = self._conn.execute(
                 """
@@ -354,4 +358,9 @@ class RedTeamGenerator:
                     now_iso(),
                 ),
             )
+            if claim_parent and generated.mode == "mutation" and generated.parent_signal_id is not None:
+                self._conn.execute(
+                    "INSERT INTO mutation_claims (signal_id, correlation_id, claimed_at) VALUES (?, ?, ?)",
+                    (generated.parent_signal_id, request["correlation_id"], now_iso()),
+                )
         return int(cursor.lastrowid or 0)

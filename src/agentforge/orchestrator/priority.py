@@ -87,12 +87,17 @@ def load_evidence(conn: sqlite3.Connection, system_version: str) -> Evidence:
         )
         signals = {str(r[0]): int(r[1]) for r in conn.execute("SELECT category, COUNT(*) FROM signals GROUP BY category")}
         last_run: dict[str, str] = {}
-        for raw, updated in conn.execute("SELECT request_json, updated_at FROM campaigns"):
-            try:
-                category = str(json.loads(raw)["category"])
-            except (ValueError, KeyError, TypeError):
-                continue
-            if updated > last_run.get(category, ""):
+        for raw, updated, current, pinned in conn.execute(
+            "SELECT request_json, updated_at, current_category, category_pinned FROM campaigns"
+        ):
+            # An unpinned placeholder is not a run of that category. A chosen or redirected category is.
+            category = str(current) if current else ""
+            if not category and int(pinned) == 1:
+                try:
+                    category = str(json.loads(raw)["category"])
+                except (ValueError, KeyError, TypeError):
+                    category = ""
+            if category and updated > last_run.get(category, ""):
                 last_run[category] = str(updated)
         pending = conn.execute("SELECT 1 FROM version_handoffs WHERE status = 'pending' LIMIT 1").fetchone() is not None
     finally:
