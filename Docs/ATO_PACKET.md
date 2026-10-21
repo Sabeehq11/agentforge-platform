@@ -52,6 +52,7 @@ A `Grant` and a non-blank `approved_by` are not authenticated principals. There 
 - [evals/results/agent-live.json](../evals/results/agent-live.json): one live agent call.
 - [evals/results/judge-drift.json](../evals/results/judge-drift.json): one scored item, not a rate.
 - [evals/results/baseline-p8.json](../evals/results/baseline-p8.json): `satisfies_d13` is false. Not a load test.
+- [evals/results/d13-load.json](../evals/results/d13-load.json): 100 of 100 live stub-route chats, `satisfies_d13` true, `zero_cost_stub` true. Orchestration bottleneck from the agent's 60-chat rolling minute. Measured stub spend `$0`. Not a real-provider benchmark.
 
 ## Record of the 2026-10-19 key-limit episode
 

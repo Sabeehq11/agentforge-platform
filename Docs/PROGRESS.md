@@ -51,14 +51,14 @@ are unverified (G-2).
 | `evals/` with 3+ categories of results | MVP | done | `evals/results/campaign-latest.json`: `seed-tm-ex-3` (TM-EX), `seed-tm-ds-1` (TM-DS), `seed-tm-pi-1` (TM-PI), all graded `pass` against the live local target, 2026-10-19. H-3 is owned by P3; P4 supplied the execution |
 | One agent live against the target | MVP | done | `evals/results/agent-live.json`, 2026-10-19: one `red_team` role, one live target call, outcome `pass`, traceable to the SQLite ledger. H-4 |
 | Vulnerability reports (3 minimum) | Final, MVP unconfirmed (Q5) | not started | P7 |
-| AI cost analysis | Final, actual spend at MVP | actual spend recorded | Spend log below: $0.1022. Projections at 100, 1K, 10K and 100K are P10 |
+| AI cost analysis | Final, actual spend at MVP | actual spend recorded | Spend log below: $0.1022. P10 projections keep the `$0.05` reservation apart from D-13 measured stub spend of `$0` |
 | Demo video, 3 to 5 minutes | MVP unconfirmed (Q5), Final | not started | P11 |
 | Social post | Final | not started | P11 |
 | Build-versus-configure record | Architecture Defense | in progress | P0. `Docs/BUILD_VS_CONFIGURE.md`, tool claims unverified |
 | Defense evidence packet | Architecture Defense | in progress | P0. `Docs/DEFENSE_PACKET.md` draft |
 | Triage lab | Final | offline-met | P10. Simulated. Not a live scan |
 | ATO-style evidence packet | Final | offline-met | P10. Q6 unconfirmed |
-| Integration packet | Final, peer dependent (Q4) | unconfirmed | P10 stub packet only. X-3 and X-4 stay PRD-outstanding |
+| Integration packet | Final, peer dependent (Q4) | externally unavailable | P10 stub is the Q4 fallback, not peer integration. No cohort peer was assigned. X-3 and X-4 stay unmet against the PRD and are outside independent-project completion scope |
 
 ## Checkpoints
 
@@ -304,10 +304,10 @@ are unverified (G-2).
   - GitHub Actions has not run on these files. Nothing was committed or pushed. Live replay stays blocked.
 
 ### P8. Observability, performance, load
-- Status: offline work done. Depends on: P6, P7. The live load test is blocked.
+- Status: offline work done, and D-13 measured. Depends on: P6, P7. The measured run is the Week 1 stub route, not a real-provider benchmark.
 - [x] Queryable answers to every PRD observability question
 - [x] Baselines for 100 cases plus full regression suite
-- [ ] 100-case live load test (needs approval), bottleneck and fix
+- [x] 100-case live load test, bottleneck and fix. Evidence: `evals/results/d13-load.json`. Not a provider-model run. `LIVE_ENABLED` is false again in committed code
 - [x] Regression SLO and index documentation
 - [x] Verify: baselines committed
 - [x] Verify: SLO asserted in CI
@@ -318,7 +318,8 @@ are unverified (G-2).
   - `evals/results/baseline-p8.json`: `live: false`, `cases: 100`, `path: campaign_loop_stub`, 25 campaigns, max `attacks_done` 4 against `max_attacks_per_run` 20. CPU, peak RSS, orchestration latency, stub latency and storage-write throughput are separate fields for the loop and for `run_suite`. Suite end-to-end throughput is a different field. LLM latency is `not_measured`. This file does not satisfy D-13. Q2 displayed rates keep the `regression_runs` denominator, including a zero numerator.
   - `python scripts/check_slo.py` prints `stub_regression_suite` and exits 0. A `--ceiling 0` run exits 1. `--select-only` exits 1. The timed call is `run_suite`, not `EXPLAIN`.
   - `python scripts/regress.py --live` still exits 2. `LIVE_ENABLED` and `PROVIDER_ENABLED` remain `False`. No budget or allowlist edit. No new spend-log row.
-  - Index proof is in [INDEXES.md](INDEXES.md). The live-test block and its unblock conditions are in [LOAD_TEST.md](LOAD_TEST.md).
+  - Index proof is in [INDEXES.md](INDEXES.md). The measured live-test result is in [LOAD_TEST.md](LOAD_TEST.md).
+  - D-13 evidence, `evals/results/d13-load.json`: 100 of 100 completed, `live: true`, `zero_cost_stub: true`, `satisfies_d13: true`, `stopped_by` null. Orchestration 90.13541795802303 seconds. Stub LLM 0.0 seconds across 100 samples (`target_stub_llm`). Storage 100 rows in 0.016690212418325245 seconds, 5991.5354876013225 rows per second. The bottleneck is orchestration around the agent's 60-chat rolling minute. The harness already uses one session. This is not a real-provider benchmark, and it adds `$0` to the spend log.
 
 ### P9. Platform security and CI completion
 - Status: in review. Depends on: P2 onward. Not a live exercise. P10 is a later checkpoint and is in progress, not started by P9.
@@ -339,21 +340,21 @@ are unverified (G-2).
   - `scripts/orchestrate.py --live` and `scripts/regress.py --live` still exit 2. `LIVE_ENABLED` and `PROVIDER_ENABLED` remain `False`. No ATO packet was assembled.
 
 ### P10. Required exercises and evidence
-- Status: in progress. Depends on: P6 to P9. Not done: X-3, X-4, and D-13 stay PRD-outstanding.
+- Status: in progress. Depends on: P6 to P9. Not done: X-3 and X-4 are externally unavailable and unmet against the PRD. D-13 is met on the stub route and is not a real-provider benchmark.
 - [x] Triage lab, 10+ findings with dispositions (offline-met)
 - [x] ATO-style evidence packet (offline-met; Q6 unconfirmed)
-- [ ] Integration packet, labeled peer or stub (Q4). Stub packet written. X-3 and X-4 stay unconfirmed, not offline-met
+- [x] Integration packet, Q4 stub fallback only. Not peer integration. X-3 and X-4 are externally unavailable, excluded from independent-project completion scope, and unmet against the PRD
 - [x] Failure drills (offline-met)
-- [x] AI cost analysis at 100, 1K, 10K, 100K (offline-met; `$0.05` is reservation-based)
+- [x] AI cost analysis at 100, 1K, 10K, 100K (offline-met; `$0.05` is reservation-based; D-13 stub spend is measured `$0`)
 - [x] Verify: each drill yields its typed error
 - [x] Verify: projections use a reservation-based target unit, with verified provider charges and the inferred orphan kept apart
 - Evidence: 2026-10-20. PRD pages 11–13 re-read. No live call and no provider call. `LIVE_ENABLED` and `PROVIDER_ENABLED` remain `False`.
   - X-1 offline-met: `evals/triage/scan-report.json`, `scripts/check_triage.py`. PRD-outstanding: none for the lab sentence.
   - X-2 offline-met: `Docs/ATO_PACKET.md`. PRD-outstanding: Q6.
-  - X-3, X-4 PRD-outstanding: `Docs/INTEGRATION_PACKET.md` is a contract conformance test, not peer integration.
+  - X-3, X-4 externally unavailable: no cohort peer was assigned, and the project is completed independently and remotely. `Docs/INTEGRATION_PACKET.md` is the Q4 stub fallback, not peer integration. Both rows stay unmet against the PRD and are excluded from independent-project completion scope.
   - X-5 offline-met: `tests/test_p10_drills.py` calls `judge_transcript` (there is no `Judge.grade`) and `Ledger.reserve` at the shared ceiling. `evals/results/drills-p10.json` is `live: false`.
-  - X-6 offline-met: `Docs/COST_ANALYSIS.md` reconciles to `agent_spend` call ids. PRD-outstanding: D-13.
-  - D-13 stays not started. P10 does not name a bottleneck.
+  - X-6 offline-met: `Docs/COST_ANALYSIS.md` reconciles to `agent_spend` call ids. D-13 measured stub spend is `$0` and is not blended into the `$0.05` reservation.
+  - D-13 met: `evals/results/d13-load.json`. Bottleneck is rate-limited orchestration, documented in `Docs/LOAD_TEST.md` and `ARCHITECTURE.md`. Not a real-provider benchmark. X-3 and X-4 stay unmet.
 
 ### P11. Final delivery
 - Status: not started. Depends on: everything.

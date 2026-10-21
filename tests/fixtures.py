@@ -220,10 +220,32 @@ TODAY = _date(2026, 10, 20)
 class FakeTarget:
     """Scripted transport. `chat` is a list of (status, body, headers) used in order, then the last one repeats."""
 
-    def __init__(self, chat: list[tuple[int, bytes, dict[str, str] | None]] | None = None, *, login_body: bytes = b"OpenEMR login") -> None:
+    def __init__(
+        self,
+        chat: list[tuple[int, bytes, dict[str, str] | None]] | None = None,
+        *,
+        login_body: bytes = b"OpenEMR login",
+        pin: str = "",
+        route_marker: str = "",
+        ready_body: bytes = b"",
+        preflight_status: int = 200,
+        preflight_body: bytes | None = None,
+        preflight_error: BaseException | None = None,
+        login_redirect: bool = False,
+        dock_endpoint: str = "/interface/modules/custom_modules/oe-module-copilot/public/chat.php",
+    ) -> None:
         self.chat = chat or [(200, b'event: answer\ndata: {"text": "I will not follow that."}\n\n', None)]
         self.login_body = login_body
+        self.pin = pin
+        self.route_marker = route_marker
+        self.ready_body = ready_body
+        self.preflight_status = preflight_status
+        self.preflight_body = preflight_body
+        self.preflight_error = preflight_error
+        self.login_redirect = login_redirect
+        self.dock_endpoint = dock_endpoint
         self.calls: list[tuple[str, str]] = []
+        self.headers: list[dict[str, str] | None] = []
         self.chat_bodies: list[str] = []
         self.chats = 0
 
@@ -231,13 +253,31 @@ class FakeTarget:
         from agentforge.safety.chokepoint import Response
 
         self.calls.append((method, url))
+        self.headers.append(headers)
+        if "stub_preflight.php" in url and method == "GET":
+            if self.preflight_error is not None:
+                raise self.preflight_error
+            if self.preflight_body is None:
+                return Response(404, b"missing")
+            return Response(self.preflight_status, self.preflight_body)
+        if url.endswith("/ready") and method == "GET" and self.ready_body:
+            return Response(200, self.ready_body)
         if "login.php" in url and method == "GET":
-            return Response(200, self.login_body)
+            body = self.login_body if not self.pin else self.login_body + b" " + self.pin.encode()
+            return Response(200, body)
         if "main_screen.php" in url and method == "POST":
+            if self.login_redirect:
+                return Response(
+                    302,
+                    b"",
+                    location="/interface/main/tabs/main.php?token_main=once",
+                    headers={"Set-Cookie": "OpenEMR=fixture-session; Path=/"},
+                )
             return Response(200, b"ok", headers={"Set-Cookie": "OpenEMR=fixture-session; Path=/"})
         if "main/tabs/main.php" in url:
-            endpoint = "/interface/modules/custom_modules/oe-module-copilot/public/chat.php"
-            return Response(200, f"<div data-csrf='fixture-csrf' data-endpoint='{endpoint}'></div>".encode())
+            endpoint = self.dock_endpoint
+            marker = f" {self.route_marker}" if self.route_marker else ""
+            return Response(200, f"<div data-csrf='fixture-csrf' data-endpoint='{endpoint}'{marker}></div>".encode())
         if "demographics.php" in url:
             return Response(200, b"<html>summary</html>")
         if "set_pt.php" in url:

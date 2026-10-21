@@ -1,0 +1,17 @@
+{
+  "architectural_fix": "Keep one authenticated session and send the 100 chats without repeating login or patient open.",
+  "bottleneck": "orchestration",
+  "cases_completed": 100,
+  "cases_requested": 100,
+  "exploit_storage_rows": 100,
+  "exploit_storage_rows_per_second": 5991.5354876013225,
+  "exploit_storage_write_seconds": 0.016690212418325245,
+  "live": true,
+  "llm_latency_label": "target_stub_llm",
+  "llm_latency_samples": 100,
+  "llm_latency_seconds": 0.0,
+  "orchestration_latency_seconds": 90.13541795802303,
+  "satisfies_d13": true,
+  "stopped_by": null,
+  "zero_cost_stub": true
+}

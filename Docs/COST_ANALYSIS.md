@@ -8,7 +8,7 @@ Three amounts are kept apart. They are not blended into one per-run dollar.
 - `provider_charge_usd` is a verified provider bill. It is null when no per-call provider bill was stored.
 - The `$0.05` projection unit is a reservation assumption. It is not a measured target bill.
 
-D-13 was not measured.
+D-13 was measured on the Week 1 stub route. [evals/results/d13-load.json](../evals/results/d13-load.json) records `zero_cost_stub: true` and 100 of 100 chats. Measured stub spend for that run is `$0`. It is not a ledger row, it is not a verified provider charge, and it is not the `$0.05` reservation. This is not a real-provider benchmark.
 
 ## Reconciliation
 
@@ -37,6 +37,6 @@ Quoted from `scripts/check_cost.py`. Target figures are reservation-based. Provi
 
 ## Architectural change at each scale
 
-- 100 reservation-based target chats are `$5.00` reserved. That meets the shared ceiling before provider samples and before the `$0.1022038` already committed. The change is a reviewed budget increase. It is not made here. Also blocked by H-1, E-3, E-6, S-1, and D-13. This `$5.00` is not measured target cost.
-- 1K: `max_attacks_per_run` is 20, so this is not one run. The change already in the architecture is many capped sequential campaigns. ADR-003 and ADR-005 name SQLite write contention as the reopen condition.
+- 100 reservation-based target chats are `$5.00` reserved. That meets the shared ceiling before provider samples and before the `$0.1022038` already committed. The change for a billable run is a reviewed budget increase. It is not made here. The measured D-13 stub run spent `$0` and does not remove H-1, E-3, E-6, or S-1. This `$5.00` is not measured target cost.
+- 1K: `max_attacks_per_run` is 100, so this is not one run. The change already in the architecture is many capped sequential campaigns. ADR-003 and ADR-005 name SQLite write contention as the reopen condition. The measured D-13 bottleneck was the agent's 60-chat rolling minute, not SQLite. That limiter still applies at this scale. Pacing stays inside the published window. The limiter is not raised here.
 - 10K and 100K: the same single-process SQLite limit and the target's in-memory rate limiter, as [ARCHITECTURE.md](../ARCHITECTURE.md) section H already states. No new database. No queue.

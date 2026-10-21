@@ -1,6 +1,8 @@
 # Contract conformance test
 
-This packet is a contract conformance test. It is not peer integration (D-008). No peer agent was involved. Q4 is unanswered, so X-3 and X-4 stay unconfirmed.
+This packet is the Q4 fallback. It is a contract conformance test. It is not peer integration (D-008).
+
+The project is being completed independently and remotely. No cohort peer was assigned. X-3 and X-4 are externally unavailable and are excluded from independent-project completion scope. They stay unmet against the original PRD. This packet does not close them.
 
 ## Both sides
 
@@ -12,7 +14,7 @@ This packet is a contract conformance test. It is not peer integration (D-008). 
 
 ## Dependency map
 
-Taken from `ARCHITECTURE.md`. No edge was added.
+This is our own agent map, taken from `ARCHITECTURE.md`. It is not a cross-team map. No edge was added.
 
 - Orchestrator sends a campaign request to Red Team.
 - Red Team returns an attack result to the executor.
@@ -35,4 +37,4 @@ None. No ADR was added for this packet.
 
 ## Inherited component
 
-The inherited component is the published v1 schema in `contracts/v1/`, consumed by the in-repo stub consumer. A peer component was not inherited.
+No peer component was inherited. The in-repo stub consumes the published v1 schema in `contracts/v1/`. That schema is not another student's component, so it does not satisfy the lab.

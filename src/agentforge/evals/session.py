@@ -43,7 +43,7 @@ DEMOGRAPHICS_PATH = "/interface/patient_file/summary/demographics.php"
 SESSION_PID_PATH = "/library/ajax/set_pt.php"
 _CSRF = re.compile(r"""data-csrf=["']([^"']+)["']""")
 _ENDPOINT = re.compile(r"""data-endpoint=["']([^"']+)["']""")
-_SSE_EVENTS = frozenset({"answer", "declined", "denied", "degraded", "error", "conversation"})
+_SSE_EVENTS = frozenset({"answer", "declined", "denied", "degraded", "error", "conversation", "latency_ms"})
 
 
 class SessionError(Exception):
@@ -65,6 +65,7 @@ class ChatTurn:
     events: dict[str, str]
     text: str
     conversation_id: str | None
+    llm_latency_ms: float | None = None
 
 
 @dataclass
@@ -130,6 +131,54 @@ def answer_text(events: dict[str, str]) -> str:
     return ""
 
 
+def stub_ready(body: bytes | str) -> bool | None:
+    """True only for the target's stub-provider ready detail. False for any other provider. None if unreadable.
+
+    The expected detail is copied from the target's ready check: stub provider (no network).
+    """
+    text = body.decode("utf-8", "replace") if isinstance(body, bytes) else body
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    checks = payload.get("checks")
+    if not isinstance(checks, dict):
+        return None
+    provider = checks.get("llm_provider")
+    if not isinstance(provider, dict) or provider.get("ok") is not True:
+        return None
+    detail = provider.get("detail")
+    if not isinstance(detail, str):
+        return None
+    if detail == "stub provider (no network)":
+        return True
+    return False
+
+
+def latency_ms_from(events: dict[str, str]) -> float | None:
+    """Read a numeric latency_ms event. Missing or non-numeric values are not invented."""
+    raw = events.get("latency_ms")
+    if raw is None:
+        return None
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        payload = raw
+    if isinstance(payload, dict):
+        payload = payload.get("llm_ms", payload.get("ms"))
+    if isinstance(payload, bool) or not isinstance(payload, (int, float, str)):
+        return None
+    try:
+        value = float(payload)
+    except ValueError:
+        return None
+    if value < 0:
+        return None
+    return value
+
+
 def conversation_id_from(events: dict[str, str]) -> str | None:
     raw = events.get("conversation")
     if not raw:
@@ -188,8 +237,10 @@ class SessionClient:
             raise ValueError("a target session attests provider 'target', not a platform provider")
         if spend_role not in ("target", "boundary"):
             raise ValueError("target spend role must be target or boundary")
-        if chat_reserve_usd is not None and chat_reserve_usd <= 0:
-            raise ValueError("billable chat reservation must be positive")
+        if chat_reserve_usd is not None and chat_reserve_usd < 0:
+            raise ValueError("chat reservation must not be negative")
+        if chat_reserve_usd == 0 and spend_role != "target":
+            raise ValueError("a zero reservation is only valid for an unverified target stub")
         self.provider = provider
         self.spend_role = spend_role
         self.chat_reserve_usd = chat_reserve_usd
@@ -201,9 +252,39 @@ class SessionClient:
         self.patient_context = patient_context
         self.ledger = ledger
         self.last_target_call_id: str | None = None
+        self.last_llm_latency_s: float | None = None
+        # Set only by accept_zero_cost_stub or by an exact authenticated stub-preflight acceptance.
+        self._zero_cost_stub = False
         self._fixture_username = fixture_username
         self._fixture_password = fixture_password
         self.session = TargetSession(origin=self.origin)
+
+    @property
+    def zero_cost_stub(self) -> bool:
+        return self._zero_cost_stub
+
+    def accept_zero_cost_stub(self, ready_body: bytes | str) -> None:
+        """Record that this session may send zero-estimate chats. A non-stub body leaves the flag false."""
+        if stub_ready(ready_body) is None:
+            self._zero_cost_stub = False
+            raise SessionError("target ready body is not a verified zero-cost stub")
+        if self.spend_role != "target" or self.chat_reserve_usd not in (None, 0.0):
+            self._zero_cost_stub = False
+            raise SessionError("verified stub chat cannot carry a billable reservation")
+        self._zero_cost_stub = True
+        self.chat_reserve_usd = 0.0
+
+    def accept_authenticated_stub_guard(self) -> None:
+        """Record zero-cost only after the caller verified the authenticated preflight fields.
+
+        Does not inspect or invent a ready body. StubRouteGuard remains the agent-provider check.
+        A positive reservation is unchanged and still cannot send a zero-cost chat.
+        """
+        if self.spend_role != "target" or self.chat_reserve_usd not in (None, 0.0):
+            self._zero_cost_stub = False
+            raise SessionError("verified stub chat cannot carry a billable reservation")
+        self._zero_cost_stub = True
+        self.chat_reserve_usd = 0.0
 
     def _request(
         self,
@@ -377,7 +458,9 @@ class SessionClient:
 
     def post_chat(self, question: str) -> ChatTurn:
         """POST one question. Requires CSRF and confirmed patient context. Does not retry 429 or 503."""
-        billable = self.spend_role == "target"
+        if self.zero_cost_stub and (self.spend_role != "target" or self.chat_reserve_usd not in (None, 0.0)):
+            raise SessionError("verified stub chat cannot use a billable reservation")
+        billable = self.spend_role == "target" and not self.zero_cost_stub
         if billable and (self.chat_reserve_usd is None or self.chat_reserve_usd <= 0 or self.chat_reserve_usd > 0.25):
             raise SessionError("billable chat requires a positive operator USD reservation of at most 0.25")
         if not self.session.patient_context_confirmed:
@@ -420,7 +503,15 @@ class SessionClient:
         found = conversation_id_from(events)
         if found:
             self.session.conversation_id = found
-        return ChatTurn(response.status, events, answer_text(events) or response.body.decode("utf-8", "replace"), found)
+        latency_ms = latency_ms_from(events)
+        self.last_llm_latency_s = None if latency_ms is None else latency_ms / 1000.0
+        return ChatTurn(
+            response.status,
+            events,
+            answer_text(events) or response.body.decode("utf-8", "replace"),
+            found,
+            latency_ms,
+        )
 
 
 def verify_demographics_query(url: str, pid: str) -> None:

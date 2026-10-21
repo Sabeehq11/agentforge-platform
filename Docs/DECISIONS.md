@@ -55,10 +55,10 @@ Each question lists the options, what it blocks, and who or what answers it. Non
 
 ### Q4. Peer integration
 - **Question:** Does a peer with an independently built agent exist, and does the cohort run the integration week?
-- **Known:** The PRD requires integration through the published contract alone, with no shared source access.
-- **If no peer:** produce a stub-conformance packet, labeled as such (D-008), and record the gap.
-- **Blocks:** the integration packet in P10 and the "build one, inherit another" lab.
-- **Resolved by:** course staff or cohort coordination. Ask early, because it depends on another person's schedule.
+- **Known:** The PRD requires integration through the published contract alone, with no shared source access. The project is being completed independently and remotely. No cohort peer was assigned.
+- **If no peer:** produce a stub-conformance packet, labeled as such (D-008), and record the gap. That fallback is written. It is not peer integration.
+- **Status:** X-3 and X-4 are externally unavailable and excluded from independent-project completion scope. They stay unmet against the original PRD. Staff confirmation is not available and is not assumed.
+- **Blocks:** the peer half of the P10 integration packet and the "build one, inherit another" lab.
 
 ### Q5. MVP versus final timing of ambiguous deliverables
 - **Question:** Are the demo video, AI cost analysis and vulnerability reports due at MVP?
