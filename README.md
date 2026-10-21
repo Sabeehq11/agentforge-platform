@@ -2,10 +2,11 @@
 
 Adversarial AI security platform for the AgentForge Clinical Co-Pilot (Gauntlet AI, Week 3).
 
-**Status: P8 (observability, offline), on top of P0 to P7.** The committed code makes no request to the target
-and calls no model. `LIVE_ENABLED` and `PROVIDER_ENABLED` are both `False` in committed code, and an environment
-variable cannot turn either on. Anything not listed under "Built" is **(planned)** and must not be described as
-working.
+**Status: P11 documentation pass, on commit `17827fb`.** P0 to P10 are committed. Scripted and stub paths for the
+four agents are built. A live run of the four agents together is not. The committed code makes no request to the
+target and calls no model. `LIVE_ENABLED` and `PROVIDER_ENABLED` are both `False` in committed code, and an
+environment variable cannot turn either on. Anything not listed under "Built" is **(planned)** or unmet, and must
+not be described as working.
 
 Start with [ARCHITECTURE.md](ARCHITECTURE.md). It names the four agents, marks each claim Built or Planned, and
 links the schemas, threat model and decisions.
@@ -25,20 +26,37 @@ only over HTTP. See [TARGET_FREEZE.md](Docs/TARGET_FREEZE.md).
 - **Contracts and store** (`contracts/v1/`, `src/agentforge/contracts/`, `src/agentforge/store/`): versioned
   message and error schemas, and a SQLite store that rejects a duplicate sequence, a missing field and a published
   status.
-- **Seed suite and executor** (`evals/cases/`, `src/agentforge/evals/`): seven synthetic cases across TM-PI, TM-EX
-  and TM-DS, deterministic graders, and a session client for the target login and chat.
+- **Seed suite and executor** (`evals/cases/`, `src/agentforge/evals/`): eleven synthetic cases across TM-PI, TM-EX,
+  TM-DS, TM-ID and TM-TM, deterministic graders, and a session client for the target login and chat. Every case
+  passes the PRD p.11 validity gate on case metadata and synthetic bodies, which is not a finding about the target.
+  `evals/owasp_coverage.json` is a coverage ledger that closes no PRD requirement: A04 and A09 are unverified
+  properties, A01 is offline only (cases and synthetic replays, no target outcome), LLM02, LLM06 and LLM08 are
+  partially exercised, and the LLM08 case is a response-claim proxy, not tool-invocation proof. `evals/results/offline-latest.json` holds synthetic safe and weakened replays. They are not
+  target results. The unobserved halves are named in [PRD_TRACEABILITY.md](Docs/PRD_TRACEABILITY.md) as R10 and the
+  open gaps U1 to U5. None of those has run.
 - **Judge** (`src/agentforge/agents/judge.py`): deterministic rules first, a model only for an ambiguous transcript.
   A labeled set and a drift procedure are in `evals/judge/` and [JUDGE_DRIFT.md](Docs/JUDGE_DRIFT.md).
 - **Orchestrator, scripted** (`src/agentforge/orchestrator/`, `scripts/orchestrate.py`): a crash-safe dispatch journal,
   ranking, bounded retries and a cost stop. `python scripts/orchestrate.py --dry-run` runs one scripted campaign.
-  A P7 run can extend that trace through the Documentation agent under the same correlation ID.
-  `python scripts/regress.py` replays a pending handoff on an in-process stub and has no live path.
+  That is not a live campaign. A P7 stub run can extend that trace through the Documentation agent under the same
+  correlation ID. `python scripts/regress.py` replays a pending handoff on an in-process stub and refuses `--live`.
 - **Red Team** (`src/agentforge/agents/red_team_generator.py`): strict model-output validation and a novelty check.
-  Tests use a scripted model. `SeedMutator` remains for the P4 path.
+  Tests use a scripted model. `SeedMutator` remains for the P4 path and calls no model.
 - **Model config** (`config/models.yaml`, `src/agentforge/models_config.py`): Red Team and Judge must use different
   model families. The probe record is [MODEL_PROBE.md](Docs/MODEL_PROBE.md).
+- **Observability and load** (`src/agentforge/observe/`, `scripts/observe.py`, `scripts/loadtest.py`): the six PRD
+  questions, an offline baseline, a stub regression SLO, and a measured D-13 run of 100 of 100 chats on the Week 1
+  stub route (`evals/results/d13-load.json`). Orchestration took 90.13541795802303 seconds. Stub LLM latency was
+  0.0 seconds. Storage wrote 5991.5354876013225 rows per second. The bottleneck is the agent's 60-chat rolling
+  minute. Measured stub spend is `$0`. That is not a real-provider benchmark. See [LOAD_TEST.md](Docs/LOAD_TEST.md).
+- **Platform security, in-process** (`src/agentforge/store/access.py`, `scripts/self_scan.py`): role-scoped grants,
+  content rules, and a self-scan of pytest, mypy, Bandit and pip-audit. `approved_by` is a label, not an
+  authenticated principal.
+- **P10 evidence, offline** (`evals/triage/scan-report.json`, `Docs/ATO_PACKET.md`, `Docs/COST_ANALYSIS.md`,
+  `evals/results/drills-p10.json`): triage, an ATO packet, failure drills and a cost analysis. The integration
+  packet is a stub conformance test, not peer integration (`Docs/INTEGRATION_PACKET.md`).
 - **CI** (`.github/workflows/ci.yml`): lint, mypy, tests with a coverage floor, Bandit, secret scan, link check,
-  workflow guard, schema and suite checks. CI makes no live or paid calls.
+  workflow guard, schema and suite checks, and a P10 evidence-file presence check. CI makes no live or paid calls.
 
 ## Evidence so far
 
@@ -46,9 +64,12 @@ only over HTTP. See [TARGET_FREEZE.md](Docs/TARGET_FREEZE.md).
   TM-EX-3 and TM-DS-1 (`evals/results/campaign-latest.json`). One live `SeedMutator` turn is in
   `evals/results/agent-live.json`. These are defense-held results, not discovered exploits.
 - The Judge was measured on four labeled items and one provider-scored ambiguous item. That is not a rate.
+- D-13: 100 of 100 completed on the Week 1 stub route, `live: true`, `zero_cost_stub: true`, measured spend `$0`.
+  Not a provider-model run. Details are in [LOAD_TEST.md](Docs/LOAD_TEST.md).
 - Spend to date is $0.1022 of the $5.00 shared ceiling. See the spend log in [PROGRESS.md](Docs/PROGRESS.md).
-- GitHub Actions passed on commit `22e7983` (reported by the operator). Changes made after that commit are not
-  CI-verified until they are pushed.
+  The `$0.05` projection unit is a reservation, not the D-13 measurement.
+- GitHub Actions passed on commit `22e7983` (reported by the operator). Later commits, including `17827fb`, are
+  not CI-verified in this repo until a run log exists. This pass does not push.
 
 ## Deployed link
 
@@ -56,15 +77,23 @@ only over HTTP. See [TARGET_FREEZE.md](Docs/TARGET_FREEZE.md).
 tested at `127.0.0.1:8300`. Closeout steps are in the deployment note in [ARCHITECTURE.md](ARCHITECTURE.md). The
 Cloudflare quick tunnel question is Q2 in [DECISIONS.md](Docs/DECISIONS.md).
 
-## Planned (not built)
+## Not verified live
 
-- **P6:** a live Orchestrator run. The scripted path is built. Live replay is blocked.
-- **P7 live replay:** the stub harness and Documentation template are built. A live regression against the
-  deployed target is not. Reports in `reports/` are platform drafts, not deployed findings.
-- **P8 live load test:** the six queries, the stub SLO and the offline 100-case baseline are built. The live 100-case run is not. See [LOAD_TEST.md](Docs/LOAD_TEST.md).
-- **P9:** the platform's own access control and security review.
-- Later checkpoints are in [ROADMAP.md](Docs/ROADMAP.md). Progress and evidence: [PROGRESS.md](Docs/PROGRESS.md).
-  Decisions and open questions: [DECISIONS.md](Docs/DECISIONS.md).
+Scripted and stub paths above are built. These are not:
+
+- A live Orchestrator campaign, and a live run of all four agents under one correlation ID.
+- A live regression replay against a public target. Reports in `reports/` are fixture drafts, not deployed findings.
+  A report's source line is `fixture`, `unverified` or `recorded_verified`, and a fix-validation line states its
+  replay basis: `stub` (a canned reply, not the target), `client_verified` (transport and sequence provenance only,
+  not a validated fix) or `unverified`. The labels do not gate `fixed`. `recorded_verified` and `client_verified` have
+  been proven only on constructed facts, and no report carries either today.
+- A real-provider load benchmark. D-13 measured the Week 1 stub route at `$0`.
+- A public deployed URL (H-1). Owner: the operator. Q2 is open.
+- Peer integration. No cohort peer was assigned. The stub packet is not that integration.
+- A provider-side spend-limit attestation (E-6). Owner: the key owner.
+
+Progress and evidence: [PROGRESS.md](Docs/PROGRESS.md). The requirement ledger is
+[PRD_TRACEABILITY.md](Docs/PRD_TRACEABILITY.md). Decisions: [DECISIONS.md](Docs/DECISIONS.md).
 
 ## Setup
 
@@ -82,16 +111,19 @@ pytest
 
 ```
 python scripts/check_evals.py
+python scripts/run_offline_cases.py --check
 python scripts/regress.py
 python scripts/check_reports.py
 python scripts/observe.py
+python scripts/check_p10_evidence.py
 ```
 
 This validates every case against `evals/schema/case.schema.json`, scans fixtures for PHI patterns, and runs the
-suite in dry-run mode. It exits 0 and prints `OK 7 cases ... dry-run fabricated no pass`. A dry run never reports a
+suite in dry-run mode. It also checks the OWASP ledger and the p.11 gate for every case. It exits 0 and prints `OK 11 cases ... dry-run fabricated no pass`. A dry run never reports a
 `pass`: a case that needs a target is `not_run`. Replay of a recorded transcript is covered by `tests/test_evals.py`.
 `scripts/regress.py` refuses `--live` and does not open a socket. `scripts/check_reports.py` checks the three draft
 reports. `scripts/observe.py` prints the six observability answers from the local store and has no live path.
+`scripts/check_p10_evidence.py` checks that the P10 files exist and are labeled. It does not fetch or scan.
 
 Local checks that CI also runs:
 

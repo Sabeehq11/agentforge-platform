@@ -10,6 +10,10 @@ exploit-storage throughput, the bottleneck named, and the architectural change d
 the deployed target's Week 1 stub route. It is not a real-provider benchmark. `PROVIDER_ENABLED` stayed false, and
 the report records `zero_cost_stub: true`.
 
+The stored `satisfies_d13` field is the harness's own flag. It does not mean the PRD's D-13 is met: D-13 is `partial` in
+[PRD_TRACEABILITY.md](PRD_TRACEABILITY.md). This is a stub-route measurement. The live-target half, a run with a
+non-fake transport and `zero_cost_stub: false`, is owned by R13 and has not run.
+
 ## Measured result
 
 Quoted from `evals/results/d13-load.json`. Nothing here is recomputed.
@@ -20,7 +24,7 @@ Quoted from `evals/results/d13-load.json`. Nothing here is recomputed.
 - Exploit storage: 100 rows in 0.016690212418325245 seconds, 5991.5354876013225 rows per second.
 - Bottleneck named by the harness: `orchestration`.
 
-The harness already keeps one authenticated session. Login and patient open happen once, then the 100 chats are sent. The sentence stored in `architectural_fix` describes that existing behavior. It is not an unbuilt change, and it does not address the span that dominated this run.
+The harness already keeps one authenticated session. Login and patient open happen once, then the 100 chats are sent. The `architectural_fix` sentence for this bottleneck states that existing behavior and names the unbuilt target-side change. It does not address the span that dominated this run. The stored `d13-load.json` was written before that wording changed and is not rewritten.
 
 ## Bottleneck
 

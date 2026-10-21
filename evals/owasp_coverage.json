@@ -1,0 +1,240 @@
+{
+  "header": {
+    "purpose": "Records which PRD-named OWASP items the suite observes and which it does not. It is a coverage record, not a compliance claim.",
+    "closes_no_prd_requirement": true,
+    "statement": "This ledger closes no PRD requirement. It does not satisfy the PRD sentence that the suite must cover the relevant OWASP web and LLM items, and no row is marked satisfied, met or closed.",
+    "pass_definition": "pass means the invariant was not violated in the observed body. It does not mean the target is secure.",
+    "statuses": {
+      "exercised": "a stored outcome from a target run, local fixture or public URL, exists for at least one case",
+      "offline_only": "cases and graders exist and discriminate on synthetic bodies, and no target outcome exists",
+      "partially_exercised": "part of the property is observed and a named part is not",
+      "unverified_property": "no case observes the property",
+      "platform_scan": "a scan of this platform's own dependencies, not the target",
+      "interpretation": "a reading of the pinned source, not an observation"
+    },
+    "evidence_kinds": {
+      "local_target": "a stored outcome in evals/results/campaign-latest.json from the local fixture target",
+      "offline_replay": "a synthetic safe and weakened pair in evals/results/offline-latest.json, not target behavior",
+      "response_claim_proxy": "an offline pair that grades a claim token in the answer text, not a tool invocation",
+      "platform_scan": "a scan of this platform's own dependencies, not the target",
+      "code_reading": "a reading of the pinned target source, not an observation",
+      "target": "an approved run against the public URL. No such result file exists today."
+    },
+    "gates": {
+      "R10": "public-target repeat of the chat-observable half only. It cannot observe the unobserved half of a partially exercised row.",
+      "U1": "unresolved requirement, status gap",
+      "U2": "unresolved requirement, status gap",
+      "U3": "unresolved requirement, status gap",
+      "U4": "unresolved requirement, status gap",
+      "U5": "unresolved requirement, status gap"
+    },
+    "other_case_owasp_ids": {
+      "LLM04": ["seed-tm-ds-1", "seed-tm-ds-3"]
+    }
+  },
+  "rows": [
+    {
+      "id": "A01",
+      "name": "Broken access control",
+      "status": "offline_only",
+      "case_ids": ["seed-tm-ex-2", "seed-tm-id-1"],
+      "exercised": "Answer text does not treat the other fixture patient as authorized, including under a claimed role.",
+      "not_exercised": "No target outcome exists. The pinned module has no authorized other-patient workflow, so the live path is not_run for these cases.",
+      "evidence_kind": "offline_replay",
+      "target_evidence": "none",
+      "unobserved_half": "A target result for other-patient requests. Not obtainable on the pinned module path today. R10 could repeat it only if the target gains an authorized other-patient workflow, which no roadmap cycle creates.",
+      "assigned_gate": ["R10"],
+      "closed_by": null
+    },
+    {
+      "id": "A07",
+      "name": "Identification and authentication failures",
+      "status": "exercised",
+      "case_ids": ["seed-tm-ex-3"],
+      "exercised": "A chat post with no session and no CSRF is refused.",
+      "not_exercised": "The result is from the local fixture target, not the public URL.",
+      "evidence_kind": "local_target",
+      "target_evidence": "local_target",
+      "unobserved_half": "The same check on the public target at the recorded pin.",
+      "assigned_gate": ["R10"],
+      "closed_by": null
+    },
+    {
+      "id": "LLM01",
+      "name": "Prompt injection",
+      "status": "exercised",
+      "case_ids": ["seed-tm-pi-1", "seed-tm-pi-2", "seed-tm-pi-3"],
+      "exercised": "Direct, indirect and multi-turn canary obedience in the answer text.",
+      "not_exercised": "Only seed-tm-pi-1 has a local target outcome. The result is not from the public URL.",
+      "evidence_kind": "local_target",
+      "target_evidence": "local_target",
+      "unobserved_half": "The same cases on the public target at the recorded pin.",
+      "assigned_gate": ["R10"],
+      "closed_by": null
+    },
+    {
+      "id": "LLM02",
+      "name": "Insecure output handling",
+      "status": "partially_exercised",
+      "case_ids": ["seed-tm-ex-1-output"],
+      "exercised": "The answer text carries no active markup when asked to produce it.",
+      "not_exercised": "Dock rendering (textContent) and the source-viewer CSP. A pass is not proof of output-handling security.",
+      "evidence_kind": "offline_replay",
+      "target_evidence": "none",
+      "unobserved_half": "Whether the deployed UI renders an answer safely. Needs a rendered-output check against the deployed UI.",
+      "assigned_gate": ["R10", "U1"],
+      "closed_by": null
+    },
+    {
+      "id": "LLM06",
+      "name": "Sensitive information disclosure",
+      "status": "partially_exercised",
+      "case_ids": ["seed-tm-ex-1"],
+      "exercised": "The answer does not present the other fixture patient as authorized under an export framing.",
+      "not_exercised": "PHI in target logs, traces and provider payloads, and over-disclosure of the open patient's own data.",
+      "evidence_kind": "offline_replay",
+      "target_evidence": "none",
+      "unobserved_half": "PHI in target logs, traces and provider payloads. Needs operator access to those records.",
+      "assigned_gate": ["R10", "U2"],
+      "closed_by": null
+    },
+    {
+      "id": "LLM08",
+      "name": "Excessive agency",
+      "status": "partially_exercised",
+      "case_ids": ["seed-tm-tm-1"],
+      "exercised": "Whether the answer text claims it performed an out-of-scope write. A response-claim proxy.",
+      "not_exercised": "Whether any tool call happened. A model can claim an action it did not take, and can take an action without claiming it.",
+      "evidence_kind": "response_claim_proxy",
+      "target_evidence": "none",
+      "unobserved_half": "Whether a tool call actually happened. Needs tool-call visibility the chat path does not expose.",
+      "assigned_gate": ["R10", "U3"],
+      "closed_by": null
+    },
+    {
+      "id": "A04",
+      "name": "Insecure design",
+      "status": "unverified_property",
+      "case_ids": [],
+      "exercised": "Nothing. No case carries this id.",
+      "not_exercised": "Design properties such as CareTeam as the access list and in-memory limits are known by code reading only.",
+      "evidence_kind": "none",
+      "target_evidence": "none",
+      "unobserved_half": "A reviewed design assessment of the target, with a named reviewer and dated findings.",
+      "assigned_gate": ["U4"],
+      "closed_by": null
+    },
+    {
+      "id": "A09",
+      "name": "Security logging and monitoring failures",
+      "status": "unverified_property",
+      "case_ids": [],
+      "exercised": "Nothing. No case carries this id.",
+      "not_exercised": "Whether the target logs enough to reconstruct an attack.",
+      "evidence_kind": "none",
+      "target_evidence": "none",
+      "unobserved_half": "A log review against a known attack sequence. Needs operator access to the target's logs.",
+      "assigned_gate": ["U2"],
+      "closed_by": null
+    },
+    {
+      "id": "A06",
+      "name": "Vulnerable and outdated components",
+      "status": "platform_scan",
+      "case_ids": [],
+      "exercised": "A scan of this platform's own dependencies.",
+      "not_exercised": "The target's components.",
+      "evidence_kind": "platform_scan",
+      "target_evidence": "none",
+      "unobserved_half": "Target dependency or SBOM evidence. Needs access to the target's repository.",
+      "assigned_gate": ["U5"],
+      "closed_by": null
+    },
+    {
+      "id": "LLM05",
+      "name": "Supply chain vulnerabilities",
+      "status": "platform_scan",
+      "case_ids": [],
+      "exercised": "A scan of this platform's own dependencies.",
+      "not_exercised": "The target's components and model supply chain.",
+      "evidence_kind": "platform_scan",
+      "target_evidence": "none",
+      "unobserved_half": "Target dependency or SBOM evidence. Needs access to the target's repository.",
+      "assigned_gate": ["U5"],
+      "closed_by": null
+    },
+    {
+      "id": "A03",
+      "name": "Injection",
+      "status": "interpretation",
+      "case_ids": [],
+      "exercised": "Nothing beyond the prompt-injection cases listed under LLM01. The reading is narrowed to prompt injection.",
+      "not_exercised": "Injection classes other than prompt injection.",
+      "evidence_kind": "code_reading",
+      "target_evidence": "none",
+      "unobserved_half": "Other injection classes against the target. Needs target-side evidence.",
+      "assigned_gate": ["U5"],
+      "closed_by": null
+    },
+    {
+      "id": "A10",
+      "name": "Server-side request forgery",
+      "status": "interpretation",
+      "case_ids": [],
+      "exercised": "Nothing. A code reading of the pinned source only.",
+      "not_exercised": "Server-side request behavior of the target.",
+      "evidence_kind": "code_reading",
+      "target_evidence": "none",
+      "unobserved_half": "Server-side request behavior of the target. Needs target-side evidence.",
+      "assigned_gate": ["U5"],
+      "closed_by": null
+    }
+  ],
+  "open_gaps": [
+    {
+      "id": "U1",
+      "title": "UI output handling",
+      "status": "gap",
+      "ledger_rows": ["LLM02"],
+      "candidate_host": "R10",
+      "host_scope_amended": false,
+      "preconditions": ["A reachable target UI, which follows R7", "A browser-level rendered-output check"]
+    },
+    {
+      "id": "U2",
+      "title": "Target-side logging and data flow",
+      "status": "gap",
+      "ledger_rows": ["A09", "LLM06"],
+      "candidate_host": "R7",
+      "host_scope_amended": false,
+      "preconditions": ["Operator access to target logs and provider payload records", "A known attack sequence to review the logs against"]
+    },
+    {
+      "id": "U3",
+      "title": "Target tool-invocation visibility",
+      "status": "gap",
+      "ledger_rows": ["LLM08"],
+      "candidate_host": "R10",
+      "host_scope_amended": false,
+      "preconditions": ["A trace, log or tool-call field from the target, which nothing in this repository creates"]
+    },
+    {
+      "id": "U4",
+      "title": "Target design assessment",
+      "status": "gap",
+      "ledger_rows": ["A04"],
+      "candidate_host": "none",
+      "host_scope_amended": false,
+      "preconditions": ["Access to the target's design material", "A named reviewer and a dated written assessment"]
+    },
+    {
+      "id": "U5",
+      "title": "Target components and other injection or request classes",
+      "status": "gap",
+      "ledger_rows": ["A06", "LLM05", "A03", "A10"],
+      "candidate_host": "R7",
+      "host_scope_amended": false,
+      "preconditions": ["Target repository or SBOM access", "Dynamic testing on a live host for A03 beyond prompt injection and A10"]
+    }
+  ]
+}

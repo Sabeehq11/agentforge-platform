@@ -39,10 +39,13 @@ from agentforge.orchestrator.state import (
 )
 from agentforge.orchestrator.stop import apply_redirect, decide
 from agentforge.orchestrator.versions import observe_version
-from agentforge.agents.documentation import draft_report, is_false_positive
+from agentforge.agents.documentation import draft_report, is_false_positive, write_report_markdown
 from agentforge.harness.invariants import _CANARY, invariant_id_for
+from agentforge.harness.replay_client import ReplayRefused
+from agentforge.harness.replay_basis import ReplayTarget
 from agentforge.harness.stub_target import StubTarget
 from agentforge.harness.suite import claim_handoff, run_suite
+from agentforge.orchestrator.provenance import verify_execution_provenance
 from agentforge.store.access import issue_grant
 from agentforge.store.records import DuplicateSequence, insert_exploit, insert_regression_case
 
@@ -78,7 +81,10 @@ class CampaignLoop:
         observed_pin: str | None = None,
         stub: StubTarget | None = None,
         reports_dir: Path | None = None,
+        replay_target: ReplayTarget | None = None,
     ) -> None:
+        if stub is not None and replay_target is not None:
+            raise ValueError("pass a stub or a replay target, not both")
         self._conn = conn
         self._journal = journal
         self._config = config
@@ -89,6 +95,7 @@ class CampaignLoop:
         self._identity_verified = identity_verified
         self._observed_pin = observed_pin
         self._stub = stub
+        self._replay_target = replay_target
         self._reports_dir = reports_dir
         self._step = 0
         self._verdicts: list[dict[str, Any]] = []
@@ -330,7 +337,7 @@ class CampaignLoop:
         if isinstance(judged, dict):
             self._verdicts.append(dict(judged))
         if isinstance(judged, dict) and judged.get("status") == "draft" and "exploit_id" in judged:
-            self._store_exploit(correlation_id, dict(judged), result, executed.transcript)
+            self._store_exploit(correlation_id, dict(judged), result, executed.transcript, executed)
         set_phase(self._conn, correlation_id, "recording", role="harness")
         self._accept(correlation_id, judged)
         if executed.halt is not None:
@@ -341,7 +348,14 @@ class CampaignLoop:
             return self._stop(correlation_id, "budget_exceeded", False, str(judged.get("detail", "")))
         return None
 
-    def _store_exploit(self, correlation_id: str, judged: dict[str, Any], result: AttackResult, transcript: object) -> None:
+    def _store_exploit(
+        self,
+        correlation_id: str,
+        judged: dict[str, Any],
+        result: AttackResult,
+        transcript: object,
+        executed: SequenceResult | None = None,
+    ) -> None:
         campaign = require_campaign(self._conn, correlation_id)
         subcategory = str(result["subcategory"])
         stored = False
@@ -380,13 +394,27 @@ class CampaignLoop:
         recorded = _target_evidence(transcript)
         # Prefer the recorded target text. Fall back to the exploit evidence when the transcript has no target turn.
         evidence = recorded or str(judged.get("observed_behavior", ""))
-        draft_report(
+        # The source line follows verified send-time facts, never the fake_transport flag by itself.
+        provenance = (
+            None
+            if executed is None
+            else verify_execution_provenance(
+                self._conn, correlation_id, executed.sequence_id, executed.transcript, executed.facts,
+                str(campaign["system_version"]), resumed=executed.resumed,
+            )
+        )
+        report_id = draft_report(
             self._conn,
             judged,  # type: ignore[arg-type]
             issue_grant("documentation"),
             held=is_false_positive(judged, evidence, canary),
+            provenance=provenance,
         )
         self._conn.commit()
+        if self._reports_dir is not None:
+            body_row = self._conn.execute("SELECT body FROM reports WHERE id = ?", (report_id,)).fetchone()
+            if body_row is not None:
+                write_report_markdown(self._reports_dir, report_id, str(body_row[0]))
 
     def _replay_pending(self, correlation_id: str) -> None:
         """Claim every pending or owned handoff, in recorded order, and replay every eligible case on the stub.
@@ -399,7 +427,8 @@ class CampaignLoop:
         ).fetchall()
         if not rows:
             return
-        if self._stub is None:
+        target: ReplayTarget | None = self._replay_target or self._stub
+        if target is None:
             self._stop(correlation_id, "target_unreachable", False, "regression suite has no stub")
             raise ContractError("regression_detected", "regression suite has no stub")
         for row in rows:
@@ -410,9 +439,18 @@ class CampaignLoop:
                     continue
             elif owner != correlation_id:
                 continue
-            outcome = run_suite(
-                self._conn, handoff_id, correlation_id, self._stub, reports_dir=self._reports_dir
-            )
+            elif self._replay_target is not None:
+                # An interrupted claim is not resumed through the client seam: its sends are not journaled, so a
+                # resume could repeat one. The operator reviews it. No case is skipped or recorded as a pass.
+                detail = "claimed handoff needs operator review; client replay is not journaled"
+                self._stop(correlation_id, "target_unreachable", False, detail)
+                raise ContractError("regression_detected", detail)
+            try:
+                outcome = run_suite(self._conn, handoff_id, correlation_id, target, reports_dir=self._reports_dir)
+            except ReplayRefused as exc:
+                detail = f"replay refused: {exc.reason}"
+                self._stop(correlation_id, "target_unreachable", False, detail)
+                raise ContractError("regression_detected", detail) from exc
             if outcome.status == "predecessor_invalid":
                 self._stop(correlation_id, "regression_detected", False, "predecessor pin is not the recorded previous pin")
                 raise ContractError("regression_detected", "predecessor pin is not the recorded previous pin")

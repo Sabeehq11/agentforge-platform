@@ -4,7 +4,7 @@ Separate from [ARCHITECTURE.md](../ARCHITECTURE.md) and from [DEFENSE_PACKET.md]
 
 ## Architecture diagram
 
-The diagram is the mermaid block under "Interaction diagram" in [ARCHITECTURE.md](../ARCHITECTURE.md). This packet does not draw a second one. Solid edges there are Built. Dashed edges are Planned.
+The diagram is the mermaid block under "Interaction diagram" in [ARCHITECTURE.md](../ARCHITECTURE.md). This packet does not draw a second one. Solid edges there are built on scripted or stub evidence. Dashed edges are not verified on a live multi-agent run. A solid edge is not a live campaign.
 
 ## Data flow
 

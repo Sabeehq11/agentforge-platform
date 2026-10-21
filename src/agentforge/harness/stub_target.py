@@ -9,6 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from agentforge.harness.invariants import Observation
+from agentforge.harness.replay_basis import STUB_BASIS, ReplayBasis
 
 
 @dataclass(frozen=True)
@@ -34,7 +35,12 @@ class StubReply:
 
 
 class StubTarget:
-    """A map of sequence hash to a reply. A missing hash is an empty 200, which the invariant grades."""
+    """A map of sequence hash to a reply. A missing hash is an empty 200, which the invariant grades.
+
+    Its replay basis is always stub: a canned reply, not the target.
+    """
+
+    last_basis: ReplayBasis = STUB_BASIS
 
     def __init__(self, replies: dict[str, StubReply] | None = None) -> None:
         self.replies = dict(replies or {})

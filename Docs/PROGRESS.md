@@ -14,7 +14,7 @@ Status values: `not started`, `in progress`, `blocked`, `done`.
 |---|---|---|---|
 | Architecture Defense | 4 hours after kickoff | P0, drafts of P1 and P2 | P0 done (reachability still unverified), P1 done, P2 done |
 | MVP | Tuesday 11:59 PM | P0 to P5 | P0 to P5 built locally. H-1 (deployed URL) is an open gap owned by the operator |
-| Final | Friday noon | P6 to P11 | not started |
+| Final | Friday noon | P6 to P11 | in progress. P6 to P10 committed through `17827fb`. P11 documentation pass is local and not committed. H-1, E-6, X-3 and X-4 stay open. Cohort video and social post are excluded from this pass |
 
 The kickoff time is not recorded in the repo, so the Architecture Defense deadline is unconfirmed.
 
@@ -22,14 +22,14 @@ The kickoff time is not recorded in the repo, so the Architecture Defense deadli
 
 | Control | Status | Evidence |
 |---|---|---|
-| Target allowlist, default deny, one HTTP chokepoint | in progress | Chokepoint, refusal log and header/body transport exist. `config/allowlist.yaml` has localhost only (`127.0.0.1:8300`), not a public host. No live transport |
-| Target identity check | in progress | Fingerprint check and fake login-page GET exist. The read-only GET of the running login page was not made. E-3 stays partial |
-| Synthetic-data fixtures and transcript scan | in progress | Synthetic fixtures and the PHI scan exist and are tested. No live transcript has been stored |
-| Per-run and per-day USD caps, attack-count cap, approval token | in progress | `budget.py` and tests in P0. Not approved for any run |
+| Target allowlist, default deny, one HTTP chokepoint | in progress | Chokepoint, refusal log and header/body transport exist. `config/allowlist.yaml` admits only `127.0.0.1:8300`, not a public host. A local operator run used that host on 2026-10-19. No public transport |
+| Target identity check | in progress | Fingerprint check exists. E-3 stays partial. The public login-page GET against a deployed URL was not made |
+| Synthetic-data fixtures and transcript scan | in progress | Synthetic fixtures and the PHI scan exist and are tested. Local campaign results are stored. A-001 stays unverified for a public deployment |
+| Per-run and per-day USD caps, attack-count cap, approval token | in progress | `budget.py` and the ledger exist. The 2026-10-19 local run used an operator approval file, not a committed token. No public run is approved |
 | Provider-side spending limit on every key (DECISIONS Q13) | blocked | Attestation gate in P0 refuses while `spend_limits.yaml` is empty; no attestation was fabricated. A direct diagnostic on 2026-10-19 confirmed the shared OpenRouter key has already exceeded its own provider-set total limit (`$250.20` of `$250.00`, does not reset). Blocked on the key owner, not this operator |
 | Per-agent cost metering and kill switch | done | Kill switch in `budget.py`. P4 ledger (`src/agentforge/safety/ledger.py`) separates reserved and incurred for `red_team`, `judge` and `target`. Exercised live 2026-10-19: two `target` rows incurred `$0.05` each from an operator-supplied reservation, two zero-cost `red_team` reservations incurred. Combined committed spend `$0.10` of the shared `$5.00` ceiling |
-| Request-rate cap toward the target | in progress | `rate.py` and tests. A 429 is not retried. Not exercised against the running target |
-| Human approval for over-cap runs, new allowlist entries, load tests | not started | |
+| Request-rate cap toward the target | in progress | `rate.py` and tests. A 429 is not retried. The D-13 harness paced at 59 chats per rolling minute on the stub route. That is not a public-host exercise |
+| Human approval for over-cap runs, new allowlist entries, load tests | partial | The D-13 stub run was operator-run and restored `max_attacks_per_run` to 20. No reviewed public allowlist entry exists. Over-cap public runs stay unapproved | |
 
 ## PRD traceability
 
@@ -43,17 +43,17 @@ are unverified (G-2).
 | Deliverable | Needed at | Status | Notes |
 |---|---|---|---|
 | Deployed target URL | every checkpoint | not started | Open gap G-1 / H-1. **Owner: the operator.** Quick tunnel URL rotates (Q2). Tested only at `127.0.0.1:8300` |
-| GitHub repo with setup guide and run instructions | MVP | done except the deployed link | Independent repo (ADR-001). P5 README has setup, dry run and operator-gated live steps. The deployed link is H-1 |
+| GitHub repo with setup guide and run instructions | MVP | done except the deployed link | Independent repo (ADR-001). The P11 README pass names scripted, stub and D-13 evidence, and the operator-gated live steps. The deployed link is H-1 |
 | `THREAT_MODEL.md` | MVP | done for P1 | Written at repo root. Defenses are by code reading, not tested |
 | `USERS.md` | MVP **(unconfirmed)** | done for P1 | Written at repo root. Checkpoint unconfirmed (Q5) |
-| `ARCHITECTURE.md` | MVP | done | P5. Root `ARCHITECTURE.md`, checked by `scripts/check_architecture.py`. Planned items are labeled |
+| `ARCHITECTURE.md` | MVP | done as a document, live claims still labeled | P11 rewrote the summary and diagram at local HEAD after `17827fb`. Scripted and stub edges are solid. Live multi-agent edges stay dashed. H-1 stays open |
 | `/contracts` | MVP first version | done for P2 | v1 schemas in `contracts/v1/`. Full coverage of both sides is Final |
 | `evals/` with 3+ categories of results | MVP | done | `evals/results/campaign-latest.json`: `seed-tm-ex-3` (TM-EX), `seed-tm-ds-1` (TM-DS), `seed-tm-pi-1` (TM-PI), all graded `pass` against the live local target, 2026-10-19. H-3 is owned by P3; P4 supplied the execution |
 | One agent live against the target | MVP | done | `evals/results/agent-live.json`, 2026-10-19: one `red_team` role, one live target call, outcome `pass`, traceable to the SQLite ledger. H-4 |
-| Vulnerability reports (3 minimum) | Final, MVP unconfirmed (Q5) | not started | P7 |
-| AI cost analysis | Final, actual spend at MVP | actual spend recorded | Spend log below: $0.1022. P10 projections keep the `$0.05` reservation apart from D-13 measured stub spend of `$0` |
-| Demo video, 3 to 5 minutes | MVP unconfirmed (Q5), Final | not started | P11 |
-| Social post | Final | not started | P11 |
+| Vulnerability reports (3 minimum) | Final, MVP unconfirmed (Q5) | partial | Three fixture drafts in `reports/`. Not deployed-target findings. Q5 stays open. M-10 stays partial |
+| AI cost analysis | Final, actual spend at MVP | offline-met | Spend log below: $0.1022. [COST_ANALYSIS.md](COST_ANALYSIS.md) keeps the `$0.05` reservation apart from D-13 measured stub spend of `$0` |
+| Demo video, 3 to 5 minutes | MVP unconfirmed (Q5), Final | excluded | Cohort submission artifact. Not part of this engineering pass |
+| Social post | Final | excluded | Cohort submission artifact. Not part of this engineering pass |
 | Build-versus-configure record | Architecture Defense | in progress | P0. `Docs/BUILD_VS_CONFIGURE.md`, tool claims unverified |
 | Defense evidence packet | Architecture Defense | in progress | P0. `Docs/DEFENSE_PACKET.md` draft |
 | Triage lab | Final | offline-met | P10. Simulated. Not a live scan |
@@ -322,7 +322,7 @@ are unverified (G-2).
   - D-13 evidence, `evals/results/d13-load.json`: 100 of 100 completed, `live: true`, `zero_cost_stub: true`, `satisfies_d13: true`, `stopped_by` null. Orchestration 90.13541795802303 seconds. Stub LLM 0.0 seconds across 100 samples (`target_stub_llm`). Storage 100 rows in 0.016690212418325245 seconds, 5991.5354876013225 rows per second. The bottleneck is orchestration around the agent's 60-chat rolling minute. The harness already uses one session. This is not a real-provider benchmark, and it adds `$0` to the spend log.
 
 ### P9. Platform security and CI completion
-- Status: in review. Depends on: P2 onward. Not a live exercise. P10 is a later checkpoint and is in progress, not started by P9.
+- Status: in review. Depends on: P2 onward. Not a live exercise. Committed at `2bdb5fe`. P10 was not started by P9.
 - [x] Coverage floor, mypy baseline, pip-audit, Bandit, self-scan
 - [x] Auth model, role-scoped database access
 - [x] Scheduled and target-change triggers with protected secrets
@@ -330,6 +330,7 @@ are unverified (G-2).
 - [x] Verify: breaking PR fails CI
 - [x] Verify: off-allowlist target refused and logged
 - [x] Verify: no secrets exposed to fork PRs
+- Not done by P9: D-11 stays unmet. ADR-003 is not a queue. E-6 stays open.
 - Evidence:
   - Measured coverage on 2026-10-20 is 89.50%. The floor stays 85. It is not raised to 90. `scripts/self_scan.py` runs pytest, mypy, Bandit and pip-audit. CI keeps the existing steps and adds pip-audit plus the self-scan. `pip-audit==2.9.0` is pinned. No workflow references `secrets.`
   - Grants are issued only by `CampaignLoop` and the suite. A forged role string writes nothing (`tests/test_p9_access.py`). `approved_by` is stored as a label. It is not an authenticated principal. A blank label cannot publish. Agent modules do not import `issue_grant`, `open_campaign`, `observe_version`, `claim_handoff` or `run_suite`.
@@ -337,10 +338,10 @@ are unverified (G-2).
   - A rejected model body is not stored. A Judge-confirmed canary sequence stays in the draft report. A PHI-shaped sequence writes no row (`tests/test_p9_content.py`).
   - A version handoff inserts one `regression_jobs` row in the same transaction. Depth is pending plus claimed. One worker claims the oldest. A raise inside the transaction leaves neither row. A kill after a committed repeat does not replay it (`tests/test_p9_triggers.py`). `.github/workflows/regression-schedule.yml` has `contents: read`, no secrets, and does not open the local store. D-11 stays unmet. ADR-003 is not reopened.
   - `reconstruct()` returns `complete` or `incomplete` with `missing` or `order_violation`. Deleting the approval row is incomplete. The view fails if it contains PHI (`tests/test_p9_audit.py`).
-  - `scripts/orchestrate.py --live` and `scripts/regress.py --live` still exit 2. `LIVE_ENABLED` and `PROVIDER_ENABLED` remain `False`. No ATO packet was assembled.
+  - `scripts/orchestrate.py --live` and `scripts/regress.py --live` still exit 2. `LIVE_ENABLED` and `PROVIDER_ENABLED` remain `False`. The ATO packet was not P9 work. It is the P10 file `Docs/ATO_PACKET.md`.
 
 ### P10. Required exercises and evidence
-- Status: in progress. Depends on: P6 to P9. Not done: X-3 and X-4 are externally unavailable and unmet against the PRD. D-13 is met on the stub route and is not a real-provider benchmark.
+- Status: in progress. Depends on: P6 to P9. Not done: X-3 and X-4 are externally unavailable and unmet against the PRD. D-13 is a stub-route measurement, and its row is `partial` since 2026-10-21. It is not a real-provider benchmark.
 - [x] Triage lab, 10+ findings with dispositions (offline-met)
 - [x] ATO-style evidence packet (offline-met; Q6 unconfirmed)
 - [x] Integration packet, Q4 stub fallback only. Not peer integration. X-3 and X-4 are externally unavailable, excluded from independent-project completion scope, and unmet against the PRD
@@ -354,15 +355,22 @@ are unverified (G-2).
   - X-3, X-4 externally unavailable: no cohort peer was assigned, and the project is completed independently and remotely. `Docs/INTEGRATION_PACKET.md` is the Q4 stub fallback, not peer integration. Both rows stay unmet against the PRD and are excluded from independent-project completion scope.
   - X-5 offline-met: `tests/test_p10_drills.py` calls `judge_transcript` (there is no `Judge.grade`) and `Ledger.reserve` at the shared ceiling. `evals/results/drills-p10.json` is `live: false`.
   - X-6 offline-met: `Docs/COST_ANALYSIS.md` reconciles to `agent_spend` call ids. D-13 measured stub spend is `$0` and is not blended into the `$0.05` reservation.
-  - D-13 met: `evals/results/d13-load.json`. Bottleneck is rate-limited orchestration, documented in `Docs/LOAD_TEST.md` and `ARCHITECTURE.md`. Not a real-provider benchmark. X-3 and X-4 stay unmet.
+  - D-13 stub-route measurement (the row is `partial`, downgraded 2026-10-21): `evals/results/d13-load.json`, commit `17827fb`. Bottleneck is rate-limited orchestration, documented in `Docs/LOAD_TEST.md` and `ARCHITECTURE.md`. Not a real-provider benchmark. X-3 and X-4 stay unmet.
 
 ### P11. Final delivery
-- Status: not started. Depends on: everything.
-- [ ] Demo video, 3 to 5 minutes
-- [ ] Social post tagging @GauntletAI
-- [ ] Final README pass, deployed URL re-check
-- [ ] Verify: line-by-line pass over the PRD submission table
-- Evidence:
+- Status: in progress. Depends on: everything. Documentation pass only. Not committed. Not pushed.
+- [x] Final README pass, against commit `17827fb` and the working tree
+- [x] Architecture summary and diagram updated. Scripted and stub edges are not described as a live multi-agent run
+- [x] Deployed URL re-check: still none. `Docs/TARGET_FREEZE.md` has no URL. `config/allowlist.yaml` admits only `127.0.0.1:8300`. H-1 stays open. Owner: the operator. No allowlist edit and no request
+- [x] Line-by-line pass over the PRD submission table, engineering rows only. Open items remain open
+- [ ] Demo video, 3 to 5 minutes. Excluded. Cohort submission artifact
+- [ ] Social post tagging @GauntletAI. Excluded. Cohort submission artifact
+- Evidence: 2026-10-20. Original PRD pages 12–13 and ROADMAP section 4 P11 re-read. No live call, no provider call, no deployment change.
+  - README no longer says the status is P8, and no longer says P9 or the D-13 run are unbuilt.
+  - `ARCHITECTURE.md` summary names all four agents as scripted or stub, records the D-13 figures from `evals/results/d13-load.json`, and keeps H-1 open.
+  - Submission table, engineering rows: repo guide updated except the deployed link; threat model, users, architecture document, contracts, three-category evals and one local live agent stay as previously evidenced; three reports stay fixture drafts; cost analysis stays offline-met; build-versus-configure and defense packet stay unverified or draft; triage, ATO packet and drills stay offline-met; integration stays the Q4 stub, not peer integration.
+  - Still open, and not closed by this pass: H-1, S-1, S-5, S-6, S-7, E-1, E-2, E-3, E-4, E-6, G-1, G-2, G-5, Q2, Q6, and the live halves of M-1 through M-12, D-1 through D-4 and D-7. D-11 stays unmet because ADR-003 rejected a queue. X-3 and X-4 stay unmet and outside independent completion scope.
+  - X-7 and X-8 are excluded from this engineering pass. They are not marked met.
 
 ## Spend log
 
@@ -380,6 +388,66 @@ Record every paid call. The PRD asks for actual development spend.
 **Key-limit episode.** The shared OpenRouter key had exceeded its own provider-set total limit (`$250.20` of `$250.00` used, no reset). The first probe and Judge runs on 2026-10-19 were refused with HTTP 403 and released at $0, so they appear as zero-cost released rows, not as spend (`Docs/MODEL_PROBE.md`, "Earlier attempt"). The key owner then raised the limit, and every provider row above was billed after that. This is not a provider spend-limit attestation: `config/spend_limits.yaml` is still empty, an operator approval stood in for it, and E-6 stays open.
 
 Zero-cost rows (two `red_team` reservations and the released probe reservations) are not listed. The PRD asks for actual development spend. The AI cost analysis at 100, 1K, 10K and 100K runs is P10, not P5.
+
+## R3 to R6 remediation (2026-10-21)
+
+Local and offline only. No deployment, no target request, no provider call, no spend. `LIVE_ENABLED` and
+`PROVIDER_ENABLED` stay false. Nothing committed or pushed. Plan: R3 to R6 combined (revision 5), against
+[REMEDIATION_ROADMAP.md](REMEDIATION_ROADMAP.md) and the original Week 3 PRD.
+
+- **R3, report truthfulness and replay seam.**
+  - Send-time facts are recorded in `SessionClient` and carried on `SequenceResult`. A report's source line is
+    `fixture`, `unverified` or `recorded_verified`, derived from those facts, the dispatch journal, identity-before-chat
+    order and a recorded pin. It is never derived from `fake_transport` alone.
+  - `CampaignLoop` writes the report markdown when a reports directory is set. A dry run passes none.
+  - A `ReplayTarget` protocol and `ClientReplayTarget` over the chokepoint client exist. A refused replay halts the loop.
+    A claimed handoff is not auto-resumed through the client seam.
+  - A fix-validation line states its replay basis (`stub`, `client_verified` or `unverified`) in two additive keys of
+    the free-form `evidence_json`. It is a label, not a gate. No schema change.
+  - Known limits, recorded and not built: `recorded_verified` and `client_verified` cannot be reached end to end in CI,
+    because `real_transport` is refused while `LIVE_ENABLED` is false, so both are proven only on constructed facts.
+    The first end-to-end proof belongs to R9, R11 and R12. A resumed campaign has no in-memory facts for a sequence
+    started before the resume, so its report is `unverified`. A `fixed` line with basis `stub` still sets
+    `fix_validation = fixed` and still feeds the dashboard `resolved` status. Gating `fixed` or publication on
+    `client_verified` is not built and is a residual risk for R11 and R12. `client_verified` has no journal check,
+    because client replay is not journaled, and it is not a validated fix.
+- **R4, cases, ledger and offline outcomes.**
+  - Four cases added (`seed-tm-ex-1` LLM06, `seed-tm-ex-1-output` LLM02, `seed-tm-id-1` A01, `seed-tm-tm-1` LLM08), 11 in
+    total, plus a minimal offline-only `active_markup` grader. The executor has no `active_markup` path, so a live run of the
+    markup case is `not_run`. No A09 or A04 case exists.
+  - p.11 validity gate, run read-only on the 7 existing cases before any new case was added: all 7 passed every check
+    (exercise tag, trigger source, discrimination, non-vacuity, content safety), so no existing case file was edited.
+    Per-case verdicts for the existing 7, all `pass`: `seed-tm-pi-1`, `seed-tm-pi-2`, `seed-tm-pi-3`, `seed-tm-ex-2`,
+    `seed-tm-ex-3`, `seed-tm-ds-1`, `seed-tm-ds-3`.
+    The gate then passed on all 11. It checks case metadata and synthetic bodies and is not a finding about the target.
+  - `evals/owasp_coverage.json` closes no PRD requirement. A04 and A09 are unverified properties. LLM02, LLM06 and LLM08
+    are partially exercised. A01 is `offline_only`: two cases with synthetic replays and no target outcome, so it is not
+    `exercised`. The LLM08 case is a response-claim proxy, not tool-invocation proof.
+  - `evals/results/offline-latest.json` is regenerated by `scripts/run_offline_cases.py` and checked with `--check`. It
+    is not target behavior. `campaign-latest.json` is untouched.
+  - Open gaps U1 to U5 stay `gap`. Hosting assessment, each conditional and none confirmed: U1 needs a reachable
+    target UI (after R7) and a browser-level rendered-output check, which R10's scope does not include today. U2 can ride
+    on R7 only as a record of whether operator log access exists, and reviewing logs needs a known attack sequence from
+    R9 or R10. U3 can ride on R10 only if the target exposes a trace, log or tool-call field, which nothing here
+    creates. U5's static half (A06, LLM05) can ride on R7 given repository or SBOM access, and A03 beyond prompt
+    injection and A10 need a live host, so R10 at best. U4 fits no cycle. No cycle was amended.
+  - Known weakness, not fixed: the executor passes a canary case on an empty 200 body. The offline runner guards it.
+    Fixed on 2026-10-21: `executor.grade_response` graded a question-length case against the response length, so a
+    correct 400 `bad_question` reply would have been `error`. It now needs the sent length and returns `error` without
+    it, and the offline runner calls it instead of the grader directly.
+  - p.11 gate strengthened on 2026-10-21, with no change to any verdict or to `offline-latest.json`: the
+    `patient_boundary` trigger needs the id `101` as a token plus a data request, a boundary case must state the edge
+    its own grader decides (1000 or 1001 for `question_length`, the cap, the missing session), the gate writes its own
+    probe bodies per grader so a verdict does not rest on the authored pair alone, and suite-level checks require all
+    three exercise tags, a multi-turn case, unique turns and no stray pair. All of it is about case metadata and
+    synthetic bodies, not the target.
+  - Known weakness, not fixed: `grade_patient_boundary` fails a refusal that names patient 101 and says "authorized".
+- **R5, documentation.** D-13, E-9 and D-8 moved from `met` to `partial`. Their original evidence is preserved, and E-9
+  and D-8 link the open controls P1 and P2. No other row changed status. H-3 and H-4 gained a local-target-only
+  qualifier. The `loadtest.py` orchestration fix string, the ATO legend, the Defense packet and `LOAD_TEST.md` were
+  aligned with the repository.
+- **R6, interpretation records.** Recorded in [DECISIONS.md](DECISIONS.md) as D-015 onward. G27, G14 and G15 are
+  `recorded, control open` (P1 to P3) and nothing closes them.
 
 ## Log
 
@@ -400,3 +468,6 @@ Zero-cost rows (two `red_team` reservations and the released probe reservations)
 | 2026-10-18 | P3 local CI recorded: 187 tests passed, 91.54% coverage, and every workflow check exited 0. Local implementation is recorded. Live execution, H-3, H-4, G-1, E-3 live half, E-6 and S-1 stay open. No PRD traceability status was changed. No target request, no model call, no spend. Nothing committed or pushed. |
 | 2026-10-19 | P5 implemented locally: `ARCHITECTURE.md`, README rewrite, spend log, architecture check, test and CI step, traceability closure audit. All local CI checks exit 0. H-1 stays an open gap owned by the operator. No target request, no model call, no new spend. Nothing committed or pushed. |
 | 2026-10-19 | P7 stub harness, Documentation template and separate publication and remediation gates implemented. No live call, no provider call, no spend. Live replay stays blocked. |
+| 2026-10-20 | P11 documentation pass. README, architecture summary and diagram, PROGRESS and PRD_TRACEABILITY updated against the original PRD and commit `17827fb`. D-13 recorded as the stub-route result. H-1 re-checked and left open. No deployment change, no live request, no commit, no push. |
+| 2026-10-21 | R3 to R6 combined remediation implemented locally: verified report provenance, replay seam and replay-basis label, four new cases, OWASP ledger, p.11 gate on all 11 cases, offline replay pairs, documentation alignment and interpretation records. D-13, E-9 and D-8 downgraded to `partial`. No deployment, no live request, no provider call, no commit, no push. |
+| 2026-10-21 | R3 to R6 audit fixes, local only: `question_length` executor grading and its offline route, kill-switch state captured before dispatch, A01 reclassified `offline_only`, PRD quotes and pages and the hosting assessment corrected, p.11 gate strengthened, targeted tests added. No deployment, live request, provider call, commit or push. |

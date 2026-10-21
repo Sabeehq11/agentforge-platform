@@ -27,6 +27,214 @@ Rules:
 | D-012 | P0 makes zero requests to the target. Reachability is UNVERIFIED until P3. | User instruction | 2026-10-17 |
 | D-014 | The regression-scan SLO is 30 seconds for one `run_suite` of 100 synthetic cases, three repeats, on the in-process stub. The PRD requires a time budget and does not set the number. The measured operation is the suite execution, not a SQL SELECT and not `EXPLAIN QUERY PLAN`. `config/slo.yaml`. | P8, platform choice | 2026-10-20 |
 | D-013 | Q8, by code reading at the pinned SHA, not by staff confirmation. Of the PRD-named items, no attacker-controlled outbound URL construction was identified for SSRF (A10): every outbound URL found is built from settings plus a fixed path. That is not proof SSRF is impossible. Vulnerable components (A06) and supply chain (LLM05) apply to the platform and are tracked as a P9 scan, not as attack cases. The rest apply and are mapped in THREAT_MODEL.md. The list names were checked against the official pages on 2026-10-17 and match. | P1 code reading | 2026-10-17 |
+| D-016 | **(interpretation)** G9, p.10 observability: human-facing queries answer the six questions, and the Orchestrator reads the same persisted rows through `priority.py`. See entry D-016 below. | Remediation R6, our reading | 2026-10-21 |
+| D-019 | **(interpretation)** G16, p.9 and p.13 cost: bounded spend is the requirement, enforced by the shared ledger and the operator approval. See entry D-019 below. | Remediation R6, our reading | 2026-10-21 |
+| D-020 | **(interpretation)** G17, p.16 misuse of the platform: the default-deny allowlist is the control. See entry D-020 below. | Remediation R6, our reading | 2026-10-21 |
+| D-021 | **(interpretation)** G21, p.12 time budget: the CI budget applies to one `run_suite` on the stub (D-014). See entry D-021 below. | Remediation R6, our reading | 2026-10-21 |
+| D-022 | **(interpretation)** p.11 OWASP items: how the ledger reads each item. It does not close the PRD sentence that the suite must cover them. See entry D-022 below. | Remediation R6, our reading | 2026-10-21 |
+
+### Recorded, control open
+
+These three entries are not decisions. Each records where a PRD control sits and what it lacks. The status is
+`recorded, control open`. No R6 text turns one of them into a decided, met or closed item. Each links an open control in
+the [open-controls register](#open-controls-register).
+
+| Id | Entry | Status | Open control | Date |
+|---|---|---|---|---|
+| D-015 | **(interpretation)** G27, p.12 data quality, "privacy-sensitive data". See entry D-015 below. | recorded, control open | P1 | 2026-10-21 |
+| D-017 | **(interpretation)** G14, p.5 and p.12, human approval before publishing and before remediation. See entry D-017 below. | recorded, control open | P2 | 2026-10-21 |
+| D-018 | **(interpretation)** G15, p.12, which agents can write exploits and which can only read. See entry D-018 below. | recorded, control open | P3 | 2026-10-21 |
+
+### Interpretation entries (R6, 2026-10-21)
+
+These are readings of ambiguous PRD sentences. They do not prove compliance and they close no gap. Quoted PRD text and
+page numbers were checked on 2026-10-21 against `Docs/Week_3_AgentForge_Updated.docx.pdf`, where each page ends at its
+"-- N of 17 --" marker. The G-register is not in this repository, and the mapping from each G-id to
+requirement rows is our reading and needs confirmation. Every entry says "we read this as". None says an interpretation
+satisfies a sentence. No code, config or test was changed to record them.
+
+#### D-015 (interpretation). G27, p.12 data quality, "privacy-sensitive data". Status: recorded, control open (P1)
+
+- **Not proven (first).** That no unscanned write can reach the store. The store has no PHI scan, so this is not a
+  store-level privacy control.
+- **PRD sentence and page.** p.12: "Data-quality checks: required fields, uniqueness, referential integrity,
+  privacy-sensitive data." The PRD does not say where the privacy check must sit.
+- **Reading.** We read the requirement as being located at the executor and content scans, which is where a scan exists
+  today.
+- **Evidence that exists today.** `src/agentforge/safety/phi.py`, the executor scan in `src/agentforge/evals/executor.py`,
+  `src/agentforge/safety/content.py`, and `test_phi_blocks_store`.
+- **Residual risk.** Any in-process caller or direct SQL can write unscanned text. See open control P1.
+- **Will not build.** A store-boundary scan in `src/agentforge/store/records.py`.
+- **Reopen trigger.** A decision that the PRD requires a store-level scan. That becomes a new checkpoint after R6.
+- **Requirement rows touched and their status.** E-9 is `partial` as set in R5, with its original evidence and the P1
+  sentence. D-7 stays `partial`. Neither is annotated as met under this interpretation, and R6 does not change either
+  status. D-7 carries only the words "control unproven, see D-015".
+- The U2 gap (PHI in target logs, traces and provider payloads) is a different control. G27 is the store. U2 is the
+  target. This entry does not touch U2.
+
+#### D-016 (interpretation). G9, p.10 and p.11, "queryable" and "data substrate"
+
+- **PRD sentence and page.** p.10, regression harness: "Store confirmed exploits in a versioned, queryable format".
+  p.11, observability layer: "It is the data substrate your Orchestrator Agent reads. Design it accordingly." The two
+  sentences are on different pages and in different sections.
+- **Reading.** We read this as: human-facing queries answer the six questions, and the Orchestrator reads the same
+  persisted rows through `priority.py`.
+- **Evidence that exists today.** `src/agentforge/observe/queries.py`, `src/agentforge/orchestrator/priority.py`,
+  `scripts/observe.py` and `tests/test_p8_queries.py`.
+- **Not proven.** That the human `answers` path and the Orchestrator's read path agree.
+- **Residual risk.** They are two code paths over the same tables and could diverge.
+- **Will not build.** A loop call to `answers`.
+- **Reopen trigger.** A divergence found between the two paths, or an instruction that one path must serve both.
+- **Requirement rows touched and their status.** D-5 stays `met`, with a "met under interpretation D-016" note in its
+  evidence cell. The status is unchanged.
+
+#### D-017 (interpretation). G14, p.5 and p.12, human approval before publishing critical or high findings and before remediation. Status: recorded, control open (P2)
+
+- **Not proven (first).** That the named person approved, or that anyone did.
+- **PRD sentence and page.** p.5: "A system that autonomously files vulnerability reports, recommends patches, or
+  triggers remediation workflows must have clearly defined trust boundaries and human approval gates." p.12: "what
+  human approval is required before a finding is published." Neither sentence names critical or high severity. That
+  scope is our reading.
+- **Reading.** We read the approval record as a non-blank approver label plus the YAML gate. That is the record format,
+  not proof of approval.
+- **Evidence that exists today.** `src/agentforge/agents/approval.py` and `tests/test_p7_gates.py`.
+- **Residual risk.** The label can be spoofed in-process, so a gate pass shows a label was supplied. See open control
+  P2. M-11 stays `partial`.
+- **Will not build.** Authenticated principals.
+- **Reopen trigger.** A decision that the PRD requires attributable approval. That becomes a new checkpoint.
+- The same limit applies to a `client_verified` or `recorded_verified` report. Neither label implies a human approved
+  it, and the report text keeps its "a human must approve" sentence.
+- **Requirement rows touched and their status.** M-11 stays `partial` and carries only the words "control unproven, see
+  D-017". R6 changes no status.
+
+#### D-018 (interpretation). G15, p.12, "which agents can write exploits, which can only read". Status: recorded, control open (P3)
+
+- **Not proven (first).** Enforcement against the process owner.
+- **PRD sentence and page.** p.12: "Define access controls: which agents can write exploits, which can only read
+  them, and what human approval is required before a finding is published."
+- **Reading.** We read the in-process `Grant` plus the documented SQL-owner limit as defining who writes.
+- **Evidence that exists today.** `src/agentforge/store/access.py`, `tests/test_p9_access.py`,
+  [ACCESS_CONTROL.md](ACCESS_CONTROL.md) and ADR-005.
+- **Residual risk.** The process owner or direct SQL bypasses grants (ADR-005). See open control P3.
+- **Will not build.** Database roles.
+- **Reopen trigger.** A decision that the PRD requires enforcement against the process owner.
+- **Requirement rows touched and their status.** D-8 is `partial` as set in R5, with its original evidence and the P2
+  sentence, because its approval-before-publication part rests on the unproven label in open control P2. D-8 is not
+  annotated as met under this interpretation, and R6 does not change its status.
+
+#### D-019 (interpretation). G16, p.9 and p.13, cost
+
+- **PRD sentence and page.** p.9: "Halting or redirecting when cost is accumulating without producing signal" and
+  "LLM cost is also a factor as this can run up tokens very quickly." p.13: "Actual dev spend and projected production
+  costs for running the adversarial platform at 100 / 1K / 10K / 100K test runs." The PRD states no spend cap.
+- **Reading.** We read bounded spend as the requirement, enforced by the shared ledger and the operator approval. The
+  provider-side cap is not a literal PRD sentence. It comes from D-011 and Q13.
+- **Evidence that exists today.** `src/agentforge/safety/budget.py`, `src/agentforge/safety/ledger.py`,
+  `src/agentforge/safety/spend_limits.py` and `config/spend_limits.yaml`.
+- **Not proven.** That any provider key has a monitored limit.
+- **Residual risk.** The 2026-10-19 episode, where the shared key had passed its own limit with no repo-side
+  attestation.
+- **Will not build.** A provider-side attestation. The cap is the R8 operator gate.
+- **Reopen trigger.** The key owner confirms a monitored limit, or the PRD is read as requiring one before any live run.
+- **Requirement rows touched and their status.** E-6 stays `gap`.
+
+#### D-020 (interpretation). G17, p.16, "turned against systems it should not attack"
+
+- **PRD sentence and page.** p.16, Appendix pre-search checklist, item 9: "How do you prevent the adversarial platform
+  from being turned against systems it should not attack?" This is a planning question in the checklist, not a
+  requirement sentence, so reading it as a requirement is itself our interpretation.
+- **Reading.** We read the default-deny allowlist as the control.
+- **Evidence that exists today.** `src/agentforge/safety/allowlist.py`, `config/allowlist.yaml`, `tests/test_allowlist.py`
+  and `.github/CODEOWNERS`.
+- **Not proven.** That changes to the allowlist are reviewed.
+- **Residual risk.** CODEOWNERS has no effect without branch protection (G-5).
+- **Will not build.** Branch protection, which is an R7 operator setting.
+- **Reopen trigger.** Branch protection is confirmed on, or a decision that the PRD requires reviewed changes.
+- **Requirement rows touched and their status.** E-2 stays `partial`.
+
+#### D-021 (interpretation). G21, p.12, "complete within a defined time budget... verify it in CI"
+
+- **PRD sentence and page.** p.12: "Regression runs that scan the full exploit database must complete within a defined
+  time budget — document this SLO and verify it in CI."
+- **Reading.** We read the CI budget as applying to one `run_suite` on the stub (D-014).
+- **Evidence that exists today.** `config/slo.yaml`, `scripts/check_slo.py` and [INDEXES.md](INDEXES.md).
+- **Not proven.** SQL query time or live-database time.
+- **Residual risk.** A scan-heavy production query could be slow while CI stays green.
+- **Will not build.** A SQL timer.
+- **Reopen trigger.** A decision that the PRD requires a database-level timer.
+- **Requirement rows touched and their status.** D-10 stays `met`, with a "met under interpretation D-021" note in its
+  evidence cell. The status is unchanged.
+
+#### D-022 (interpretation). p.11 OWASP items
+
+- **PRD sentence and page.** p.11: "The attack suite must cover the OWASP Top 10 web vulnerabilities relevant to the
+  Clinical Co-Pilot (broken access control, injection, insecure design, vulnerable components, auth failures, logging
+  failures, SSRF) in addition to the OWASP LLM Top 10 (prompt injection, insecure output handling, sensitive
+  information disclosure, excessive agency, supply-chain risks). Map each test case to its OWASP category in the eval
+  dataset."
+- **Reading.** We read the R4 ledger [`evals/owasp_coverage.json`](../evals/owasp_coverage.json) as a coverage record.
+  A06 and LLM05 are platform scans, A10 is a code reading, and A03 is narrowed to prompt injection. A09 and A04 are
+  unverified properties. A01 is offline only, with no target outcome. LLM02, LLM06 and LLM08 are partially exercised,
+  and the LLM08 case is a response-claim proxy.
+- **Evidence that exists today.** The ledger, the 11 cases, `evals/results/offline-latest.json` and
+  `tests/test_r4_offline.py`.
+- **Not proven.** That any of the OWASP items the PRD names is covered on the deployed target. None of this closes the
+  p.11 "must cover" sentence in full.
+- **Open gaps, unresolved.** U1 (UI output handling), U2 (target logging and data flow), U3 (tool-invocation
+  visibility), U4 (design assessment) and U5 (target components and other injection or request classes). R10 is named
+  only as the public-target repeat of the chat-observable halves.
+- **Hosting assessment.** Each is conditional and none is confirmed. U1 needs a reachable target UI (after R7) and a
+  browser-level check that R10's scope does not include today. U2 can ride on R7 only as a record of whether operator
+  log access exists, and reviewing logs needs a known attack sequence from R9 or R10. U3 depends on a target-side
+  trace, log or tool-call field that nothing here creates. The static half of U5 (A06, LLM05) can ride on R7 given
+  repository or SBOM access, while A03 beyond prompt injection and A10 need a live host. U4 needs a
+  documentation-only checkpoint. No cycle has been amended.
+- **Residual risk.** The PRD sentence stays open. LLM06's privacy half is U2 and is not addressed by the D-015 entry.
+- **Will not build.** Any case labeled A09 or A04, or any claim that a ledger row is satisfied.
+- **Reopen trigger.** Your decision to add checkpoints for U1 to U5, or a PRD reading that excludes one of them. This
+  entry is not that decision.
+- **Requirement rows touched and their status.** M-10 stays `partial`. No U-item has a roadmap checkpoint.
+
+### Open-controls register
+
+Each control has status `open`. This register is where an unproven control stays visible. R6 builds none of the
+closing steps.
+
+| Control | What is unproven | What would address it | Status |
+|---|---|---|---|
+| P1, store-level privacy | Unscanned text can be written to the store by any in-process caller or by direct SQL. The scans sit at the executor and content boundary, not at the store. | A store-boundary scan, or a PRD reading that excludes the store. R6 does neither. | open |
+| P2, approver identity | `approved_by` is a non-blank label, not an authenticated principal, so a recorded approval does not show a named person approved. | Authenticated approvers, or an attested out-of-band approval record. R6 builds neither. | open |
+| P3, write authority against the process owner | In-process grants do not bind the process owner or direct SQL (ADR-005). | Database-level roles, or an accepted documented limit. R6 builds neither. | open |
+
+### Residual-risk register
+
+One list. It collects the residual risks above, the open controls P1 to P3, one line per open OWASP gap, and the R3 and
+R4 limits.
+
+- P1, P2 and P3 above, each `open`.
+- U1: the deployed UI's rendering of an answer (`textContent`) and the source-viewer CSP are not observed.
+- U2: whether the target logs enough to reconstruct an attack, and PHI in its logs, traces and provider payloads, are
+  not observed.
+- U3: whether a tool call happened is not observed. The LLM08 case is a response-claim proxy and says nothing about
+  tool invocation.
+- U4: the target's design properties (A04) are known by code reading only.
+- U5: the target's components and other injection or request classes (A06, LLM05, A03 beyond prompt injection, A10)
+  are not observed.
+- The executor passes a canary case on an empty 200 body. The offline runner guards against it. That executor path is
+  not changed. (The executor's separate `question_length` grading bug, which graded against the response length, was
+  fixed on 2026-10-21 and is covered by tests.)
+- `grade_patient_boundary` fails a refusal that names the other patient id and contains the word "authorized" (for
+  example "not authorized for patient 101"). The `seed-tm-id-1` and `seed-tm-ex-2` safe bodies avoid the id, so the
+  gate does not hit it. The grader is not changed, because that would change graded outcomes.
+- Fix-validation lines state their replay basis, but the label does not gate `fixed`, publication or the `resolved`
+  status in `observe/queries.py`. A `stub`-based `fixed` still reads as resolved on the dashboard. Owners: R11 (a
+  published report must cite a verified basis) and R12 (journaled client replay).
+- `client_verified` has no journal check, because client replay is not journaled. It proves transport and sequence
+  provenance only, not a validated fix.
+- `recorded_verified` and `client_verified` are proven only on constructed facts until R9 and R12.
+- A resumed campaign reports `unverified` for a sequence started before the resume.
+- The D-016 query paths could diverge. The D-019 provider-side limit is unattested. The D-020 allowlist review is not
+  enforced. The D-021 budget measures the stub suite, not SQL time.
 
 ## 2. Open questions
 

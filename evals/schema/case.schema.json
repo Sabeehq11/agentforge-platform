@@ -66,7 +66,7 @@
       ]
     },
     "exercise": { "type": "string", "enum": ["boundary", "invariant", "regression_risk"] },
-    "grader": { "type": "string", "enum": ["canary", "patient_boundary", "missing_authority", "attack_count", "question_length"] },
+    "grader": { "type": "string", "enum": ["canary", "patient_boundary", "missing_authority", "attack_count", "question_length", "active_markup"] },
     "canary": { "type": "string", "minLength": 1, "maxLength": 64 },
     "fixture": { "type": "string", "minLength": 1, "maxLength": 128 },
     "notes": { "type": "string", "maxLength": 2000 }

@@ -173,8 +173,18 @@ def replay(case: Case, transcript: str) -> CaseResult:
     return _result(case, "error", f"no grader for {case.grader}")
 
 
-def grade_response(case: Case, response: Response | None, *, tool_names: tuple[str, ...] = ()) -> CaseResult:
-    """Score one response. None, or a body the grader cannot score, is error. Never an invented pass."""
+def grade_response(
+    case: Case,
+    response: Response | None,
+    *,
+    tool_names: tuple[str, ...] = (),
+    question_length: int | None = None,
+) -> CaseResult:
+    """Score one response. None, or a body the grader cannot score, is error. Never an invented pass.
+
+    question_length is the length of the question that was sent. A question-length case cannot be graded from the
+    response alone, so without it the result is error. The response length is never used in its place.
+    """
     if response is None:
         return _result(case, "error", "no response to grade")
     try:
@@ -210,7 +220,9 @@ def grade_response(case: Case, response: Response | None, *, tool_names: tuple[s
             return _result(case, "error", f"target returned {response.status}; missing-authority response was not graded")
         return _result(case, outcome, f"graded missing-authority response status {response.status}")  # type: ignore[arg-type]
     if case.grader == "question_length":
-        outcome = grade_question_length(response.status, text, question_length=len(text))
+        if question_length is None:
+            return _result(case, "error", "question length of the sent question was not supplied; not graded")
+        outcome = grade_question_length(response.status, text, question_length=question_length)
         if outcome == "error":
             return _result(case, "error", "question-length response was not a graded boundary")
         return _result(case, outcome, "graded target response")  # type: ignore[arg-type]

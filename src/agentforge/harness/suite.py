@@ -15,7 +15,7 @@ from agentforge.contracts.messages import ErrorEnvelope
 from agentforge.contracts.validate import validate
 from agentforge.agents.documentation import fix_validation_line, write_report_markdown
 from agentforge.harness.invariants import evidence_of, grade
-from agentforge.harness.stub_target import StubTarget
+from agentforge.harness.replay_basis import UNVERIFIED, ReplayBasis, ReplayTarget, basis_of, summarize_basis
 from agentforge.orchestrator.state import halt, log_run, now_iso
 from agentforge.store.access import issue_grant
 from agentforge.store.records import insert_regression_run, outcomes
@@ -82,7 +82,7 @@ def run_suite(
     conn: sqlite3.Connection,
     handoff_id: int,
     correlation_id: str,
-    stub: StubTarget,
+    stub: ReplayTarget,
     *,
     kill_at: str | None = None,
     kill_after_calls: int | None = None,
@@ -185,7 +185,7 @@ def _fill_missing(
     expected: str,
     target_pin: str,
     correlation_id: str,
-    stub: StubTarget,
+    stub: ReplayTarget,
     kill_after_calls: int | None = None,
 ) -> None:
     """Execute only repeats that have no committed row. A committed row is not sent again."""
@@ -199,12 +199,17 @@ def _fill_missing(
         if index in present:
             continue
         observed = stub.respond(digest)
+        basis = basis_of(stub)
         result = grade(subcategory, observed)
         outcome = result.outcome
         # Wording that matches the expected text is not a fix when the invariant did not pass.
         if outcome != "pass" and expected and expected in observed.body:
             outcome = "wording_only"
         evidence = evidence_of(result, observed)
+        # How this repeat was produced. Two additive keys in the free-form evidence: no label, cookie or body.
+        evidence["replay_basis"] = basis.label
+        if basis.label == UNVERIFIED:
+            evidence["basis_failed"] = list(basis.failed_checks)
         if outcome == "wording_only":
             evidence["detail"] = "wording_only"
         with conn:
@@ -312,6 +317,9 @@ def _update_fix_validation(
         return
     current = outcomes(conn, case_id, target_pin)
     previous = outcomes(conn, case_id, previous_pin)
+    basis: ReplayBasis | tuple[ReplayBasis, ReplayBasis]
+    current_basis = summarize_basis([item["evidence"] for item in current])
+    basis = current_basis
     if len(current) < REPEATS:
         label, pin, run_ids = "not_run", None, ""
     elif all(item["outcome"] == "pass" for item in current):
@@ -321,10 +329,11 @@ def _update_fix_validation(
         label = "regressed"
         pin = f"{previous_pin},{target_pin}"
         run_ids = ",".join(str(item["id"]) for item in previous + current)
+        basis = (summarize_basis([item["evidence"] for item in previous]), current_basis)
     else:
         label, pin = "not_fixed", target_pin
         run_ids = ",".join(str(item["id"]) for item in current)
-    body = _replace_fix_line(str(report[2]), label, pin, run_ids)
+    body = _replace_fix_line(str(report[2]), label, pin, run_ids, basis)
     with conn:
         conn.execute(
             """
@@ -342,8 +351,15 @@ def _previous_fixed(conn: sqlite3.Connection, case_id: str, previous_pin: str) -
     return len(previous) == REPEATS and all(item["outcome"] == "pass" for item in previous)
 
 
-def _replace_fix_line(body: str, label: str, pin: str | None, run_ids: str) -> str:
-    line = fix_validation_line(label, pin, run_ids)
+def _replace_fix_line(
+    body: str,
+    label: str,
+    pin: str | None,
+    run_ids: str,
+    basis: ReplayBasis | tuple[ReplayBasis, ReplayBasis] | None = None,
+) -> str:
+    """Replace only the fix line. The source line stays. No basis means unverified, never a stronger label."""
+    line = fix_validation_line(label, pin, run_ids, basis)
     lines = body.splitlines()
     replaced = [line if item.startswith("Fix validation:") else item for item in lines]
     if not any(item.startswith("Fix validation:") for item in lines):

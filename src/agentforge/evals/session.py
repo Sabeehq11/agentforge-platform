@@ -24,6 +24,7 @@ from http.client import HTTPConnection, HTTPSConnection
 from urllib.parse import parse_qs, urlencode, urljoin, urlsplit
 
 from agentforge.evals.login import LoginRequest
+from agentforge.safety import chokepoint as _chokepoint
 from agentforge.safety.allowlist import Allowlist
 from agentforge.safety.budget import Budget
 from agentforge.safety.ledger import Ledger
@@ -48,6 +49,25 @@ _SSE_EVENTS = frozenset({"answer", "declined", "denied", "degraded", "error", "c
 
 class SessionError(Exception):
     """A session step failed before a chat attack could be graded. Not a pass."""
+
+
+@dataclass(frozen=True)
+class SendFact:
+    """One request that actually returned from the chokepoint. Facts only: no query, cookie, header or body.
+
+    purpose is a constant set by the SessionClient method that issued the request. live_enabled is the kill switch
+    as it was when the request was sent, read from both the session module and the chokepoint. This is an additive
+    log. It is not a gate and nothing here can allow or refuse a call.
+    """
+
+    purpose: str
+    method: str
+    path: str
+    origin: str
+    status: int
+    transport_is_real: bool
+    fake_transport: bool
+    live_enabled: bool
 
 
 class TargetStatusError(SessionError):
@@ -248,6 +268,8 @@ class SessionClient:
         self.rate_cap = rate_cap
         self.refusal_log = refusal_log
         self.fake_transport = fake_transport
+        # Send-time facts for report provenance. Appended after a request returns. Never read by a gate.
+        self.facts: list[SendFact] = []
         # Only a caller-supplied verified workflow may confirm patient context. The default confirms nothing.
         self.patient_context = patient_context
         self.ledger = ledger
@@ -295,9 +317,12 @@ class SessionClient:
         body: bytes | str | None = None,
         est_cost_usd: float = 0.0,
         max_redirects: int = 0,
+        purpose: str = "other",
     ) -> Response:
         if not LIVE_ENABLED and not self.fake_transport:
             raise RefusedByChokepoint("live", "live use is disabled (LIVE_ENABLED is False)")
+        # The kill-switch state is read before dispatch, so the fact says what it was when the request was sent.
+        live_at_send = bool(LIVE_ENABLED and _chokepoint.LIVE_ENABLED)
         self.session.calls.append(method + " " + url.split("?", 1)[0])
         merged = dict(headers or {})
         if self.session.cookie and "Cookie" not in merged:
@@ -305,7 +330,7 @@ class SessionClient:
         if isinstance(body, (bytes, bytearray)) and "Content-Length" not in merged:
             merged["Content-Length"] = str(len(body))
         try:
-            return request(
+            response = request(
                 method,
                 url,
                 transport=self.transport,
@@ -324,6 +349,8 @@ class SessionClient:
                 body=body,
                 max_redirects=max_redirects,
             )
+            self._record_fact(purpose, method, url, response.status, live_at_send)
+            return response
         except RefusedByChokepoint:
             raise
         except OSError as exc:
@@ -333,9 +360,25 @@ class SessionClient:
                 f"transport failed after the gates passed: {type(exc).__name__} errno={errno}"
             ) from exc
 
+    def _record_fact(self, purpose: str, method: str, url: str, status: int, live_at_send: bool) -> None:
+        parts = urlsplit(url)
+        port = parts.port if parts.port is not None else (443 if parts.scheme == "https" else 80)
+        self.facts.append(
+            SendFact(
+                purpose=purpose,
+                method=method,
+                path=parts.path,
+                origin=f"{parts.hostname or ''}:{port}",
+                status=int(status),
+                transport_is_real=self.transport is real_transport,
+                fake_transport=self.fake_transport,
+                live_enabled=live_at_send,
+            )
+        )
+
     def verify_identity(self) -> None:
         """GET the login page and stop on a fingerprint mismatch or a redirect. No later call on failure."""
-        response = self._request("GET", self.session.identity_url, est_cost_usd=0.0)
+        response = self._request("GET", self.session.identity_url, est_cost_usd=0.0, purpose="identity")
         check_login_page(response)
 
     def login(
@@ -375,6 +418,7 @@ class SessionClient:
             headers={"Content-Type": "application/x-www-form-urlencoded"},
             body=form,
             max_redirects=0,
+            purpose="login",
         )
         if response.status in (401, 403):
             raise SessionError("login refused")
@@ -383,7 +427,7 @@ class SessionClient:
         _store_cookies(self.session, response)
         if response.location and "token_main=" in response.location:
             # tabs/main.php rejects a request that lacks the one-time token from this redirect.
-            landed = self._request("GET", urljoin(action, response.location))
+            landed = self._request("GET", urljoin(action, response.location), purpose="login_landing")
             _store_cookies(self.session, landed)
             if landed.status == 200 and not landed.location:
                 self._store_dock(landed)
@@ -392,7 +436,9 @@ class SessionClient:
         """Read data-csrf and data-endpoint. Uses the login landing page when it already contained them."""
         if self.session.csrf and self.session.chat_url:
             return
-        response = self._request("GET", urljoin(self.origin + "/", DOCK_PATH.lstrip("/")) + "?site=" + SITE_ID)
+        response = self._request(
+            "GET", urljoin(self.origin + "/", DOCK_PATH.lstrip("/")) + "?site=" + SITE_ID, purpose="dock"
+        )
         if response.status != 200 or response.location:
             raise SessionError(f"dock status {response.status}")
         self._store_dock(response)
@@ -416,7 +462,7 @@ class SessionClient:
             raise SessionError("patient open was not sent: csrf is missing")
         demographics, readback_url, readback_body = patient_open_urls(self.origin, pid, self.session.csrf)
         verify_demographics_query(demographics, pid)
-        opened = self._request("GET", demographics)
+        opened = self._request("GET", demographics, purpose="patient_open")
         if opened.status != 200 or opened.location:
             raise SessionError(f"patient open status {opened.status}")
         readback = self._request(
@@ -424,6 +470,7 @@ class SessionClient:
             readback_url,
             headers={"Content-Type": "application/x-www-form-urlencoded"},
             body=urlencode(readback_body),
+            purpose="patient_readback",
         )
         if readback.status != 200 or readback.location or not _session_pid_matches(readback.body, pid):
             raise SessionError("session pid read-back did not match the operator pid")
@@ -454,6 +501,7 @@ class SessionClient:
                 "User-Agent": "agentforge-eval",
             },
             body=body.encode("utf-8"),
+            purpose="unauthenticated",
         )
 
     def post_chat(self, question: str) -> ChatTurn:
@@ -486,6 +534,7 @@ class SessionClient:
                 },
                 body=json.dumps(payload),
                 est_cost_usd=reserve,
+                purpose="chat",
             )
         except Exception:
             if call_id is not None and self.ledger is not None:

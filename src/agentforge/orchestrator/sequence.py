@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from agentforge.evals.login import LoginRequest
-from agentforge.evals.session import SessionClient, SessionError, TargetStatusError
+from agentforge.evals.session import SendFact, SessionClient, SessionError, TargetStatusError
 from agentforge.orchestrator.journal import Journal, Outcome, Refused, parse_retry_after
 from agentforge.orchestrator.policy import Config
 from agentforge.orchestrator.retry import Halt, StepHalt, run_step
@@ -47,6 +47,10 @@ class SequenceResult:
     halt: Halt | None = None
     transcript: dict[str, Any] | None = None
     unrecordable: bool = False  # a turn completed before a crash. It is not re-sent and its text is gone.
+    # Send-time facts for this sequence only, sliced from the client log. A resumed sequence has facts for the
+    # requests sent after the resume, so it cannot be verified as a whole and says so.
+    facts: list[SendFact] = field(default_factory=list)
+    resumed: bool = False
 
 
 def sequence_cap(request_cap: int, config: Config) -> int:
@@ -199,7 +203,8 @@ class SequenceRunner:
             number = resume  # an in-flight sequence: its counter bump is committed and is never repeated
         sid = sequence_id_for(correlation_id, number)
         base = SEQUENCE_STEP_BASE + number * STEPS_PER_SEQUENCE
-        result = SequenceResult(sid)
+        result = SequenceResult(sid, resumed=resume is not None)
+        fact_start = len(self._client.facts)
         policy = self._config.retry
         bump_sequence = (
             "UPDATE campaigns SET sequences_started = sequences_started + 1 WHERE correlation_id = ?",
@@ -214,6 +219,7 @@ class SequenceRunner:
         except StepHalt as exc:
             self._refund(correlation_id, base, "sequences_started")
             result.halt = exc.halt
+            result.facts = list(self._client.facts[fact_start:])
             return result
         records: list[dict[str, str]] = []
         for index, turn in enumerate(turns):
@@ -255,4 +261,5 @@ class SequenceRunner:
             if result.status is not None:
                 body["http_status"] = result.status
             result.transcript = body
+        result.facts = list(self._client.facts[fact_start:])
         return result

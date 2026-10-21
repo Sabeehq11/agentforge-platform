@@ -10,15 +10,23 @@ import hashlib
 import json
 import sqlite3
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from agentforge.contracts.messages import ConfirmedExploit
 from agentforge.contracts.validate import validate
+from agentforge.orchestrator.provenance import FIXTURE, UNVERIFIED as PROVENANCE_UNVERIFIED, VERIFIED, Provenance
 from agentforge.orchestrator.state import log_run, now_iso
 from agentforge.safety.content import require_storable_sequence
 from agentforge.store.access import Grant, require_grant
 from agentforge.safety.phi import require_clean
 from agentforge.store.records import CATEGORIES, SEVERITIES, IncompleteRecord, StoreError, sequence_hash
+
+if TYPE_CHECKING:  # harness/__init__ imports suite, which imports this module, so the type is not imported at runtime
+    from agentforge.harness.replay_basis import ReplayBasis
+
+STUB = "stub"
+CLIENT_VERIFIED = "client_verified"
+UNVERIFIED = "unverified"
 
 REQUIRED = (
     "exploit_id",
@@ -39,8 +47,13 @@ def draft_report(
     grant: Grant | None = None,
     *,
     held: bool = False,
+    provenance: Provenance | None = None,
 ) -> str:
-    """Validate and insert one draft. A second draft for the same exploit returns the existing id."""
+    """Validate and insert one draft. A second draft for the same exploit returns the existing id.
+
+    provenance is how the source sequence was executed. None means a platform fixture. The label is verified by
+    orchestrator.provenance from send-time facts. It is never taken from a transport flag here.
+    """
     require_grant(grant, "documentation")
     validate("confirmed_exploit", exploit)
     missing = [name for name in REQUIRED if not exploit.get(name)]
@@ -71,6 +84,7 @@ def draft_report(
         fix_validation="not_run",
         pin=None,
         run_ids="",
+        provenance=provenance,
     )
     require_storable_sequence(exploit["minimal_sequence"])
     require_clean(body)
@@ -109,10 +123,12 @@ def render(
     fix_validation: str,
     pin: str | None,
     run_ids: str,
+    provenance: Provenance | None = None,
+    replay_basis: ReplayBasis | tuple[ReplayBasis, ReplayBasis] | None = None,
 ) -> str:
     """Fixed headings, so a reviewer can replay the turns without the agent that wrote them."""
     turns = json.dumps(exploit["minimal_sequence"], sort_keys=True)
-    fix = fix_validation_line(fix_validation, pin, run_ids)
+    fix = fix_validation_line(fix_validation, pin, run_ids, replay_basis)
     return "\n".join(
         [
             f"Report: {report_id}",
@@ -126,26 +142,87 @@ def render(
             f"Publication status: {publication}",
             f"Remediation status: {remediation_status}",
             fix,
-            "Live target: no. This draft was produced from a platform fixture, not a deployed finding.",
+            source_line(provenance),
         ]
     )
 
 
-def fix_validation_line(label: str, pin: str | None, run_ids: str) -> str:
-    """The one fix-validation sentence. A regression names both pins and both run-id sets."""
+FIXTURE_SOURCE_LINE = "Live target: no. This draft was produced from a platform fixture, not a deployed finding."
+
+
+def source_line(provenance: Provenance | None) -> str:
+    """The one line that says where the source sequence came from. It follows the verified label only."""
+    if provenance is None or provenance.label == FIXTURE:
+        return FIXTURE_SOURCE_LINE
+    if provenance.label == PROVENANCE_UNVERIFIED:
+        checks = ", ".join(provenance.failed) or "unspecified"
+        return (
+            f"Live target: unverified. Provenance incomplete: {checks}. "
+            "Not a deployed finding until provenance is verified."
+        )
+    if provenance.label == VERIFIED:
+        return (
+            f"Live target: yes. Provenance verified: executor transcript {provenance.transcript_id}, "
+            f"{provenance.steps} completed target steps in sequence {provenance.sequence_id}, "
+            f"identity check before first chat, pin {provenance.pin}, origin {provenance.origin}. "
+            "This label does not assert the origin is the public deployed URL. "
+            "This is a draft a human must approve."
+        )
+    raise ValueError("unknown provenance label")
+
+
+def fix_validation_line(
+    label: str,
+    pin: str | None,
+    run_ids: str,
+    basis: ReplayBasis | tuple[ReplayBasis, ReplayBasis] | None = None,
+) -> str:
+    """The one fix-validation sentence. A regression names both pins and both run-id sets.
+
+    Every line that cites runs also names how those runs were produced. A caller that passes no basis gets
+    unverified, so a stronger label cannot come from omission. not_run cites no run, so it states no basis.
+    """
     if pin and "," in pin and label == "regressed":
         previous, current = pin.split(",", 1)
         ids = [item for item in run_ids.split(",") if item]
         half = len(ids) // 2
         previous_ids, current_ids = ",".join(ids[:half]), ",".join(ids[half:])
-        return (
+        line = (
             f"Fix validation: {label}; previous pin {previous}; runs {previous_ids}; "
             f"pin {current}; runs {current_ids}"
         )
+        return f"{line}; {_basis_suffix(label, basis)}"
     line = f"Fix validation: {label}"
     if pin:
         line = f"{line}; pin {pin}; runs {run_ids}"
-    return line
+    if label == "not_run":
+        return line
+    return f"{line}; {_basis_suffix(label, basis)}"
+
+
+def _no_basis() -> ReplayBasis:
+    from agentforge.harness.replay_basis import ReplayBasis
+
+    return ReplayBasis(UNVERIFIED, ("basis_not_supplied",))
+
+
+_CLIENT_QUALIFIER = "transport and sequence only; does not show the fix is applied or effective"
+
+
+def _basis_suffix(label: str, basis: ReplayBasis | tuple[ReplayBasis, ReplayBasis] | None) -> str:
+    unknown = _no_basis()
+    if label == "regressed":
+        previous, current = basis if isinstance(basis, tuple) else (basis or unknown, basis or unknown)
+        text = f"replay basis previous {previous.label}, current {current.label}"
+        if CLIENT_VERIFIED in (previous.label, current.label):
+            text += f" (client_verified: {_CLIENT_QUALIFIER})"
+        return text
+    single = basis if basis is not None and not isinstance(basis, tuple) else unknown
+    if single.label == STUB:
+        return "replay basis stub (canned reply, not the target)"
+    if single.label == CLIENT_VERIFIED:
+        return f"replay basis client_verified ({_CLIENT_QUALIFIER})"
+    return f"replay basis unverified ({', '.join(single.failed_checks) or 'no basis recorded'})"
 
 
 def write_report_markdown(directory: Path, report_id: str, body: str) -> Path:

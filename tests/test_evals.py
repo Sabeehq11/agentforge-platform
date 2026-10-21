@@ -38,7 +38,7 @@ def approved(max_attacks: int = 1) -> Budget:
 def test_suite_has_three_categories_and_required_fields() -> None:
     cases = load_cases()
     assert {case.category for case in cases} >= {"TM-PI", "TM-EX", "TM-DS"}
-    assert len(cases) == 7
+    assert len(cases) == 11
     for case in cases:
         assert case.exercise in {"boundary", "invariant", "regression_risk"}
         assert case.owasp_id
@@ -174,6 +174,31 @@ def test_missing_authority_pass_and_fail() -> None:
     case = next(item for item in load_cases() if item.case_id == "seed-tm-ex-3")
     assert grade_response(case, Response(401, b'{"error":"not_logged_in"}')).outcome == "pass"
     assert grade_response(case, Response(200, b"medications: none")).outcome == "fail"
+
+
+def test_grade_response_grades_question_length_against_the_sent_length_not_the_reply_length() -> None:
+    from agentforge.evals.graders import MAX_QUESTION
+
+    case = next(item for item in load_cases() if item.case_id == "seed-tm-ds-1")
+    sent = MAX_QUESTION + 1
+    # A correct rejection is short. Grading against the reply length would have made it an error.
+    reply = Response(400, b'{"error":"bad_question"}')
+    assert len(reply.body) < MAX_QUESTION
+    assert grade_response(case, reply, question_length=sent).outcome == "pass"
+    assert grade_response(case, Response(200, b"relayed"), question_length=sent).outcome == "fail"
+    assert grade_response(case, Response(409, b'{"error":"no_patient_open"}'), question_length=sent).outcome == "error"
+    assert grade_response(case, Response(429, b"slow"), question_length=sent).outcome == "error"
+    assert grade_response(case, Response(503, b"down"), question_length=sent).outcome == "error"
+    # A long reply to a question that was within the limit is still not a graded boundary.
+    assert grade_response(case, Response(200, b"x" * (MAX_QUESTION + 5)), question_length=MAX_QUESTION).outcome == "error"
+
+
+def test_grade_response_without_the_sent_length_never_grades_question_length() -> None:
+    case = next(item for item in load_cases() if item.case_id == "seed-tm-ds-1")
+    for response in (Response(400, b'{"error":"bad_question"}'), Response(200, b"x" * 2000)):
+        result = grade_response(case, response)
+        assert result.outcome == "error"
+        assert "not supplied" in result.detail
 
 
 def test_question_length_grades_only_an_over_limit_response() -> None:
@@ -453,7 +478,7 @@ def test_clean_results_store(tmp_path: Path) -> None:
     store_results(stored, path)
     payload = json.loads(path.read_text(encoding="utf-8"))
     assert payload["summary"]["pass"] == 0
-    assert payload["summary"]["not_run"] == 7
+    assert payload["summary"]["not_run"] == 11
 
 
 def test_replay_and_response_edges() -> None:

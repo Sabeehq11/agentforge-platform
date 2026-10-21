@@ -1,8 +1,9 @@
 # Architecture Defense evidence packet (draft)
 
 Draft for the Architecture Defense. The safety skeleton in `src/agentforge/safety/` is implemented. The message
-schemas are published at `contracts/v1/` and checked by `src/agentforge/contracts/`. Agents that send them are not
-implemented.
+schemas are published at `contracts/v1/` and checked by `src/agentforge/contracts/`. Scripted agents send them in
+the offline campaign loop and are exercised on stubs and fixtures. There is no public URL and no live multi-agent
+campaign, and planned items stay labeled planned.
 
 ## 1. Agent interaction diagram (planned)
 

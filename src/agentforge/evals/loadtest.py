@@ -246,7 +246,7 @@ def bottleneck_from(
         return "not_measured", "not_measured"
     name = winners[0]
     fixes = {
-        "orchestration": "Keep one authenticated session and send the 100 chats without repeating login or patient open.",
+        "orchestration": "The harness already keeps one authenticated session: login and patient open happen once, then the 100 chats are sent. Pace chats to the agent's rolling window. A target-side limiter change would shorten the span and is not made here.",
         "stub_llm": "Bound the stub complete() call and return its measured duration without a second model hop.",
         "exploit_storage": "Write the 100 exploit rows in one transaction instead of committing each row.",
     }
