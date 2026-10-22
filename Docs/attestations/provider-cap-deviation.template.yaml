@@ -1,0 +1,9 @@
+# In-repo-caps-only DEVIATION TEMPLATE. Unfilled on purpose: the validator rejects it.
+#
+# A written deviation records a decision to proceed on in-repo caps alone. It does NOT close E-6, does NOT make R8
+# accepted, and does NOT substitute for the provider-cap evidence. R8 stays blocked.
+# Copy to Docs/attestations/provider-cap-deviation.yaml only if you decide that.
+scope: ""                      # must be exactly: in-repo-caps-only
+approved_by: ""                # a named human
+approved_on: ""                # ISO date
+statement: ""                  # the decision in your words

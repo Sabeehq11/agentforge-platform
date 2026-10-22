@@ -331,6 +331,29 @@ repeat of a chat-observable half. None of these has run.
 
 A candidate host closes nothing. A host cycle may take an item only if that cycle's own approved Plan adds it.
 
+## R7 and R8 offline preparation (2026-10-21)
+
+Level 1 only: the offline Build exists and passes its own tests. R7 and R8 are not accepted, and no row above or below changed
+status because of it. The deploy, the allowlist commit, the provider-cap evidence and the attestation commit are each a separate
+gate that you approve, and none has been requested or run. Nothing was deployed, requested, called or spent.
+
+| Requirement | Status (unchanged) | What Build added, and what it does not show |
+|---|---|---|
+| Row H-1 | gap | Runbooks and an attestation validator. No URL exists. H-1 stays `gap` until R9 |
+| Row S-1 | partial | [`config/target_pin.yaml`](../config/target_pin.yaml) records the pin commit, tree, four asset hashes and three negative controls. The local tree has 22 uncommitted paths, so it is not the pin. A future observation is recorded as `consistent_with_pin`, `difference` or `unverified`, never "verified" |
+| Row E-1 | partial | Allowlist tests on a temporary file cover a one-origin, two-prefix proposal. `config/allowlist.yaml` is not edited, and a public origin is not allowlisted |
+| Row E-2 | partial | Branch protection is not read. It is recorded later as set, not set or unchecked |
+| Row E-3 | partial | The platform sends no request in R7. Identity would be operator-observed, because Gate K1 is unavailable |
+| Row E-6 | gap | The provider cap is unverified. The $300 is a credit balance, not a per-key limit. Templates and a validator exist. A written in-repo-caps-only deviation would not close this row |
+
+Gate K1 stays unavailable until public-target authorization is implemented in its own reviewed cycle and you approve it
+([record](prerequisites/public-target-authorization.md)). P-U, a possible post-dispatch undercount, is open and blocks every
+billable live campaign R9 to R14 ([record](prerequisites/P-U.md)). Build confirmed it on two paths and fixed neither.
+
+U2 and U5 carry a `preparation` note in the ledger and stay `gap`. U2 has a log-access inventory template and no evidence. U5 has a
+static inventory of the pinned lockfiles, with no advisory lookup ([Docs/sbom](sbom/README.md)). `host_scope_amended` stays
+`false` for every U item, because the ledger check and its tests require it. No host cycle's scope was amended.
+
 ## Interpretation register
 
 Interpretations are readings of ambiguous PRD sentences, recorded in [DECISIONS.md](DECISIONS.md). This register has its

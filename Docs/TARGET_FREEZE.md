@@ -79,3 +79,28 @@ edf1a6fb1c25039905fc20d499b9b65d9bde6f449db139e2d0b4fa5b0f23a8d9  Docs/ROADMAP.m
 ```
 
 The copies in this repo then diverge on purpose (see PROGRESS.md log).
+
+## Correction, 2026-10-21 (R7-R8 Build, offline)
+
+The "Caveat: the running stack may differ from the pinned SHA" section above lists four uncommitted files. That count
+was stale. A read-only `git status --porcelain` of the local target working tree on 2026-10-21 shows **22 paths**
+differing from HEAD `9f036541cf95e896db065e0c652afb75627b03c2`: 15 modified tracked files and 7 untracked paths.
+
+- Modified, agent and module code: `agent/app/chat.py`, the module's `public/chat.php`, `src/ModuleConfig.php` and
+  `config.local.php.example`.
+- Untracked, new module files: `public/stub_preflight.php`, `src/StubRouteGuard.php` and `src/StubRoutePreflight.php`.
+- Untracked, tests and docs: `agent/tests/test_chat_latency_unit.py`, `docs/week3/`, and two isolated PHP tests under
+  `tests/Tests/Isolated/Modules/Copilot/`.
+- Modified, tests, docs and eval outputs: the remaining 11 paths.
+
+Consequence: the existing local stack, if built from this tree, is **not** the pin. HEAD matches the pin, but HEAD alone
+does not describe what runs. This repository made none of those changes and did not touch the target repo.
+
+Decision for the public deployment: deploy from a **clean checkout of exactly `9f03654`** (a separate clean clone, not a `git worktree` of the existing repo, with its own
+compose project), leaving the existing tree and its volumes alone. The expected values for that build are in
+[`config/target_pin.yaml`](../config/target_pin.yaml): the commit and tree sha, the sha256 of the four module assets, and
+three paths that must be absent. The four assets are identical in the dirty tree and at the pin, so they cannot tell the
+two apart. The absent paths can. The agent code is private, so no outside check proves a clean pin. The pin outcome is
+recorded as `consistent_with_pin`, `difference` or `unverified`, never "verified".
+
+No deployment, URL, allowlist entry or target request exists as a result of this entry.

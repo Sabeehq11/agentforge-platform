@@ -1,0 +1,35 @@
+# Expected values for the pinned target build. Read-only facts from the target repo, recorded 2026-10-21 with
+# `git rev-parse`, `git show` and `git cat-file` (no target edit, no request, no deployment).
+#
+# This is a manifest, not evidence about any running deployment. A public outside check can only compare what the
+# web server serves. The module assets below are byte-identical in the target's dirty working tree and at the pin,
+# so they cannot tell the pin from the dirty tree. The negative-control paths can: they do not exist at the pin.
+# The agent code is private, so no outside check proves a clean pin. Provenance comes from the operator-attested
+# deploy record (Docs/attestations/deploy-attestation.template.yaml) and is labeled operator-attested.
+#
+# Changing this file is a reviewed change (.github/CODEOWNERS lists /config/).
+pin:
+  commit: 9f036541cf95e896db065e0c652afb75627b03c2
+  tree: ca0f7d5e5a705e57fb1f2161411c2a0680e64933
+  repository: Sabeehq11/openemr-base-clean
+  branch: week2-agentforge
+module_root: interface/modules/custom_modules/oe-module-copilot
+assets:
+  - path: public/assets/copilot.js
+    sha256: c711f244fa47555e21b9a25fb7c3b4d5fae8f1c41b174709857a7b80c418fa10
+    bytes: 16531
+  - path: public/assets/copilot.css
+    sha256: 67cfaecea92963320f95818fdd036957402924fabc9cc6b93964510ef03f2e6c
+    bytes: 4000
+  - path: public/assets/copilot-source.js
+    sha256: f9c93e5d64aef23dcfebde330bf01e39ea9486e716c6ad4dbb51175208e6cd64
+    bytes: 5179
+  - path: public/assets/copilot-upload.js
+    sha256: 217d4aa6e65b1d4b4c208e9acee0f48bfa42e82f96d38aeef62cd5e1a1dc8149
+    bytes: 7317
+# Paths absent at the pin. They exist as untracked files in the target's dirty working tree.
+# A deployed build that serves one of them is not the pin.
+negative_controls:
+  - public/stub_preflight.php
+  - src/StubRouteGuard.php
+  - src/StubRoutePreflight.php

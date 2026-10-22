@@ -1,0 +1,33 @@
+# Deploy attestation TEMPLATE for the public R7 target. Unfilled on purpose: the validator rejects it.
+#
+# Copy to Docs/attestations/deploy-attestation.yaml only AFTER Gate A (deployment) was separately approved and done.
+# You write this record. The platform does not, and it is operator-attested, not independently verified.
+# Never put a password, token, key, cookie or header in it. Record hashes and labels only.
+# A passing record is one input to R7 Level 2. It does not accept R7 and says nothing about the private agent code.
+attested_by_label: ""          # must be exactly: operator-attested
+operator: ""                   # your name
+window_start_utc: ""           # ISO timestamp, e.g. 2026-10-22T14:00:00Z
+window_end_utc: ""             # ISO timestamp, after the start
+deploy_path: ""                # path of the clean checkout of the pin, not the dirty tree
+compose_project: ""            # must differ from the existing local stack
+head_sha: ""                   # git rev-parse HEAD, must equal config/target_pin.yaml pin.commit
+tree_sha: ""                   # git rev-parse HEAD^{tree}, must equal pin.tree
+git_status_porcelain_empty: false   # set true only if `git status --porcelain --untracked-files=all` in the clean checkout printed nothing, measured immediately before the first container start
+image_ids: []                  # image ids of the running containers
+route: ""                      # must be: stub  (the route active in this window)
+route_config_sha256: ""        # sha256 of the route configuration. Never its contents.
+security_gate_result: ""       # pass
+agent_private_check: ""        # pass: your own check of the private agent code
+fixture_credential_rotated: false   # true once the fixture login was rotated for the window
+seeded_data_source: ""         # where the seeded data came from
+a001_confirmed: false          # true: the data is synthetic (A-001)
+origin: ""                     # https://<public hostname>, no path, no port other than 443
+access_log_review:
+  before: false                # true: reviewed before the window
+  after: false                 # true: reviewed after the window
+  unexplained_entries: -1      # must be 0. Otherwise stop and rotate.
+branch_protection: ""          # set | not_set | unchecked
+pin_outcome: ""                # consistent_with_pin | difference | unverified (never "verified")
+observed:                      # what you saw from outside the target
+  assets: {}                   # {public/assets/copilot.js: <sha256>, ...} for the four manifest assets
+  negative_controls: {}        # {public/stub_preflight.php: <http status>, ...} for the three controls

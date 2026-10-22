@@ -1,0 +1,16 @@
+# Spend reconciliation TEMPLATE for the $12.00 lifetime ceiling: E = I + O + X.
+# Unfilled on purpose: the validator rejects it.
+#
+# Fill it by hand from the ledger and the provider bill on the day of an approval request. This platform reads no
+# database to do it. A record older than one day is rejected. Copy to Docs/attestations/spend-reconciliation.yaml.
+#   I  incurred_usd       incurred ledger spend
+#   O  open_reserved_usd  open reservations, counted at the reserved amount
+#      uncertain_usd      the uncertain outcomes inside O. Never released to $0 without evidence no request was sent.
+#   X  excess_usd         bill evidence above the recorded amounts, carried here and not enforced by code
+# Excluded: Budget's double count, other users' spend, the $300 balance, projections.
+as_of: ""                      # ISO date of the reconciliation
+incurred_usd: null
+open_reserved_usd: null
+uncertain_usd: null
+excess_usd: null
+notes: ""

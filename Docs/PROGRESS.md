@@ -450,6 +450,48 @@ Local and offline only. No deployment, no target request, no provider call, no s
 - **R6, interpretation records.** Recorded in [DECISIONS.md](DECISIONS.md) as D-015 onward. G27, G14 and G15 are
   `recorded, control open` (P1 to P3) and nothing closes them.
 
+## R7 and R8 offline Build (2026-10-21)
+
+Level 1 of the R7-R8 gate plan, revision 3: the offline Build is written and tested. **R7 offline preparation is done and
+operational acceptance is pending Gates A and B. R8 offline preparation is done and R8 is blocked on Gate D.** Neither is
+accepted. No traceability row moved to `met`, and none changed status. See
+[the traceability section](PRD_TRACEABILITY.md#r7-and-r8-offline-preparation-2026-10-21).
+
+Nothing was deployed, requested, called or spent. Both kill switches stayed `False`. No key was used and `.env` was not opened.
+The ledger is unchanged at `$0.1522038` of the `$5.00` constant. No existing file under `src/agentforge/safety/` or
+`src/agentforge/providers/` was edited, nor `agents/openrouter.py`, `evals/session.py`, `config/allowlist.yaml`,
+`config/spend_limits.yaml`, `config/budget.yaml`, a workflow or an existing script.
+
+What exists now:
+- [`config/target_pin.yaml`](../config/target_pin.yaml): the pin manifest. [TARGET_FREEZE.md](TARGET_FREEZE.md) has a dated
+  correction: the local target tree has 22 uncommitted paths, not 4, so it is not the pin.
+- `src/agentforge/gates/`: pure validators (pin comparison, deploy attestation, provider-cap evidence, the $12.00 ceiling and
+  preflight). They import no network, process, database or secret code, and a test enforces it.
+- `scripts/preflight_live.py`: offline GO or NO-GO per gate. It returns NO-GO on this repo, which is the expected state.
+- Unfilled templates in `Docs/attestations/`, runbooks in `Docs/runbooks/`, a static inventory in `Docs/sbom/`, and the open
+  prerequisite records in `Docs/prerequisites/`.
+- Tests: `tests/test_r7_allowlist.py`, `test_r7_accounting.py`, `test_r7_gates.py` and `test_r7_r8_offline.py`.
+
+Findings that need your decision before any operational gate:
+- **The pin's tunnel scripts must not be run for the public window.** `tunnel.sh` hardcodes the project `development-easy-light`,
+  the container names and port 9300, so on this machine it acts on your existing stack, and `security_gate.sh` hardcodes ports 8320,
+  8310 and 8400. The deploy runbook now documents one approach only: a clean checkout of the pin, the pin's compose files under a
+  unique project name with new ports and volumes, the agent on the new network and a new port, a hand-started `cloudflared`, and hand-run
+  security checks aimed at the new stack ([deploy runbook](runbooks/r7-deploy.md)). Gate A also needs the project name, checkout path,
+  work directory and five ports named in the request. The runbook steps are untested text.
+- **P-U is open and is wider than the plan said.** A post-dispatch transport failure releases the ledger reservation at $0 on the
+  client-ledger path, which is confirmed, and also on the judge provider path, which is new. R9 to R14 stay blocked
+  ([P-U](prerequisites/P-U.md)).
+- **`host_scope_amended` was not set to true for U2 and U5.** The plan asked for it, but `evals/ledger.py` and
+  `tests/test_r4_offline.py` require it to be `false`, and changing either is outside the plan's file list. U2 and U5 carry a
+  `preparation` note instead, and both stay `gap`.
+- **The provider cap is still unverified.** The $300 is a credit balance and the shared key's limit is unknown. R8 is blocked
+  unless a named human supplies evidence.
+- **Gate K1 is unavailable** until public-target authorization is implemented in its own reviewed cycle
+  ([record](prerequisites/public-target-authorization.md)).
+
+Spend log: no new entry. Exposure `E = I + O + X` is `$0.1522038 + 0 + 0` as of this date, against the `$12.00` ceiling.
+
 ## Log
 
 | Date | Entry |
@@ -472,3 +514,4 @@ Local and offline only. No deployment, no target request, no provider call, no s
 | 2026-10-20 | P11 documentation pass. README, architecture summary and diagram, PROGRESS and PRD_TRACEABILITY updated against the original PRD and commit `17827fb`. D-13 recorded as the stub-route result. H-1 re-checked and left open. No deployment change, no live request, no commit, no push. |
 | 2026-10-21 | R3 to R6 combined remediation implemented locally: verified report provenance, replay seam and replay-basis label, four new cases, OWASP ledger, p.11 gate on all 11 cases, offline replay pairs, documentation alignment and interpretation records. D-13, E-9 and D-8 downgraded to `partial`. No deployment, no live request, no provider call, no commit, no push. |
 | 2026-10-21 | R3 to R6 audit fixes, local only: `question_length` executor grading and its offline route, kill-switch state captured before dispatch, A01 reclassified `offline_only`, PRD quotes and pages and the hosting assessment corrected, p.11 gate strengthened, targeted tests added. No deployment, live request, provider call, commit or push. |
+| 2026-10-21 | R7-R8 offline Build (Level 1) implemented locally: pin manifest, additive `gates` package, unfilled attestation templates, offline preflight, allowlist, accounting and no-effect tests, runbooks, static inventory, P-U and public-target records. R7 and R8 are not accepted and no row moved. No deployment, live request, provider call, key use, spend, commit or push. |

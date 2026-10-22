@@ -207,6 +207,7 @@
       "ledger_rows": ["A09", "LLM06"],
       "candidate_host": "R7",
       "host_scope_amended": false,
+      "preparation": "R7-R8 Build ships a log-access inventory template only (Docs/attestations/log-access-inventory.template.md). Evidence status is none until the operator fills it. A filled template is an operator-attested inventory, unverified, and does not show the logs are adequate. Reviewing logs needs a known attack sequence, so that waits for R9 or R10 and their own plans. No host cycle's scope is amended and the status stays gap.",
       "preconditions": ["Operator access to target logs and provider payload records", "A known attack sequence to review the logs against"]
     },
     {
@@ -234,6 +235,7 @@
       "ledger_rows": ["A06", "LLM05", "A03", "A10"],
       "candidate_host": "R7",
       "host_scope_amended": false,
+      "preparation": "R7-R8 Build records a static inventory of the pinned source tree (Docs/sbom/README.md). It is a static inventory of the pin, not the deployed build and not exploitability. No advisory lookup was made, because Gate A0 is not approved. Rows A06 and LLM05 are not moved and no target evidence kind is claimed. A03 beyond prompt injection and A10 need dynamic tests on a live host, which is attack traffic and a separate approval. No host cycle's scope is amended and the status stays gap.",
       "preconditions": ["Target repository or SBOM access", "Dynamic testing on a live host for A03 beyond prompt injection and A10"]
     }
   ]

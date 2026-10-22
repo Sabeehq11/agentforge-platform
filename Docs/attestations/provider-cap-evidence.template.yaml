@@ -1,0 +1,17 @@
+# Provider-cap evidence TEMPLATE (R8, E-6). Unfilled on purpose: the validator rejects it.
+#
+# Copy to Docs/attestations/provider-cap-evidence.yaml only when a NAMED HUMAN has seen a per-key limit on the
+# dashboard, or holds a written owner statement of one. Today the cap is UNVERIFIED: the $300 is a credit balance,
+# not a per-key cap, and the shared key already passed a $250 limit on 2026-10-19.
+# Record labels and amounts only. Never the key value. A valid record is an attestation, not a verified limit.
+status: ""                     # must be exactly: attested_not_verified
+provider: ""                   # openrouter
+key_label: ""                  # a label, never the key
+method: ""                     # dashboard | owner_statement
+per_key_limit: false           # true: a limit on this key, not only on the account
+limit_usd: 0                   # the limit in force, positive
+usage_usd: 0                   # usage shown against it, must be below the limit
+limit_exceeded_already: true   # must be false
+observed_by: ""                # a named human
+observed_on: ""                # ISO date, at most 30 days old
+reference: ""                  # where the evidence is kept (screenshot name, message id), not its contents
