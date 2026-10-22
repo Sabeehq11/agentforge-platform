@@ -1,6 +1,6 @@
 ## sha256 frozen files
 7abdefbc2889bf96f7364a5cfaf04403914d775dc0a25c7e075f996faf23d117  src/agentforge/safety/__init__.py
-476eb32f2c3374e637fe63eb167fc4cd152acae25ef52edced8e52b7598d95d0  src/agentforge/safety/allowlist.py
+b291166e2120d9cf9b697851fee2e56c4da8a7311d5e8b784354bbed4ea1b7f4  src/agentforge/safety/allowlist.py
 7e9446a8dc187a512a9f789110d62b5fc6b38e6ebfcbab7b448e2dba2879cb80  src/agentforge/safety/budget.py
 6875a308a5206ce6c912b8191b967314e413770b926b0ab59a1480f87c12783b  src/agentforge/safety/chokepoint.py
 6d1856f2392d56435a782e6dd243eb940cdcb2dd86a6dfa5fb6c64811f87c958  src/agentforge/safety/content.py
