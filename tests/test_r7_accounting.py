@@ -10,15 +10,13 @@ F2  A chat reserve is counted twice in Budget when a client ledger is set: once 
     chokepoint estimate. Preflight in sequence.py encodes this as 2 * need. Zero-cost requests count as attacks.
 F3  Budget.per_day_usd is a second lifetime cap, not a daily one: nothing resets day_spent. start_run() resets only
     run_spent and the attack count. A new process re-seeds both from the ledger's committed total.
-F4  P-U (possible UNDERCOUNT). SessionClient.post_chat with a client ledger releases the reservation at $0 after a
-    transport failure that happened AFTER the request was dispatched. The request may have billed. The ledger then
-    shows $0 for it. The journal path does the opposite and holds the reservation as `unknown`, which is correct.
-    P-U stays open and blocks every billable live campaign until a separate reviewed safety-code cycle closes it.
+F4  A dispatched chat whose outcome is unknown stays reserved on the client-ledger path. Releasing it at $0 was
+    the undercount. The journal path still holds the same failure as `unknown`. The P-U record stays open until
+    the operator closes it.
 F5  Provider (OpenRouter judge) calls carry no ledger or budget argument. Recording the bill is the caller's job.
     last_cost_usd is None, never zero, when no cost was reported.
-F6  The judge's provider path has the same shape as P-U. A timeout or a transport OSError after the request was
-    handed to the transport releases the judge reservation at $0. This is found by this Build and is recorded in
-    Docs/prerequisites/P-U.md as part of the same open prerequisite. It is not fixed here.
+F6  A Judge timeout or a transport OSError after the request was handed to the provider holds the reservation.
+    A known non-bill, such as a gate refusal or a 429, is still released.
 """
 
 from __future__ import annotations
@@ -247,15 +245,15 @@ def test_chat_spend_limit_refusal_zeroes_the_ledger_but_budget_keeps_the_estimat
     assert state(budget) == (RESERVE, RESERVE, 0)  # F1: conservative leftover in Budget only
 
 
-def test_p_u_post_dispatch_transport_failure_releases_the_ledger_at_zero() -> None:
-    """F4. The request was dispatched, the outcome is unknown, and the ledger now says $0. This is the undercount."""
+def test_p_u_post_dispatch_transport_failure_holds_the_ledger_reservation() -> None:
+    """A dispatched chat whose outcome is unknown stays reserved. Releasing it at $0 was the undercount."""
     wire = Wire(error=ConnectionResetError(54, "reset after write"))
     client, conn, _budget = _ledger_client(wire)
     with pytest.raises(SessionError, match="transport failed"):
         client.post_chat("hello")
     assert [m for m, _u in wire.calls] == ["POST"]  # the chat request did leave the process
-    assert _rows(conn) == [("released", 0.0, 0.0)]
-    assert committed_usd(conn) == 0.0  # the ledger cannot show a charge that may have happened
+    assert _rows(conn) == [("reserved", RESERVE, 0.0)]
+    assert committed_usd(conn) == pytest.approx(RESERVE)
 
 
 def test_journal_path_holds_the_reservation_on_the_same_failure() -> None:

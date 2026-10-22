@@ -536,6 +536,16 @@ class SessionClient:
                 est_cost_usd=reserve,
                 purpose="chat",
             )
+        except SessionError as exc:
+            # The chat POST left the process and the outcome is unknown. Keep the reservation until
+            # there is evidence it did not bill. A gate refusal is raised before dispatch and is not this path.
+            if (
+                call_id is not None
+                and self.ledger is not None
+                and "transport failed after the gates passed" not in str(exc)
+            ):
+                self.ledger.release(call_id)
+            raise
         except Exception:
             if call_id is not None and self.ledger is not None:
                 self.ledger.release(call_id)

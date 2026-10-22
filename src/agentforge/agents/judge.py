@@ -384,6 +384,7 @@ class RulesJudge:
                         retryable=False,
                     )
             except JudgeTimeoutError:
+                # A local stub timeout never left the process. A provider timeout is ProviderOutcomeUnknown.
                 self._ledger.release(call_id)
                 return _envelope("judge_timeout", result["correlation_id"], "needs_human_review", retryable=True)
             except OSError:
