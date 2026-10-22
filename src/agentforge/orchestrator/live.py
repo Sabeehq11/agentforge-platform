@@ -34,7 +34,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol, overload
 
 from agentforge.agents.judge import RulesJudge
 from agentforge.agents.openrouter_redteam import OpenRouterRedTeamModel, RedTeamModelError
@@ -218,12 +218,22 @@ def _summary(conn: sqlite3.Connection, outcome: RunOutcome, *, pin_label: str) -
     }
 
 
+class _EnvLoader(Protocol):
+    """A .env loader. Production passes override; a test stub may ignore it."""
+
+    @overload
+    def __call__(self, path: Path) -> None: ...
+
+    @overload
+    def __call__(self, path: Path, *, override: frozenset[str] = ...) -> None: ...
+
+
 def run_live(
     root: Path,
     *,
     today: date,
     env: Mapping[str, str] | None = None,
-    load_env: Callable[[Path], None] = load_local_env,
+    load_env: _EnvLoader = load_local_env,
     model_transport: Callable[..., object] | None = None,
     sleep: Callable[[float], None] = time.sleep,
     resume: str | None = None,

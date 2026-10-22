@@ -58,7 +58,7 @@ def _local_public_host(path: Path) -> str | None:
 
 def public_entries(host: str) -> tuple[dict[str, object], dict[str, object]]:
     """The two path prefixes a temporary public origin may carry. The host must already be an exact name."""
-    return tuple(entry for entry in merge_public_host({}, host)["entries"])  # type: ignore[misc]
+    return tuple(entry for entry in merge_public_host({}, host)["entries"])
 
 
 def merge_public_host(data: Any, host: str) -> dict[str, Any]:
