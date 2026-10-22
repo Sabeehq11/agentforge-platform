@@ -24,6 +24,7 @@
       "items": { "$ref": "defs.schema.json#/$defs/turn" }
     },
     "http_status": { "type": "integer", "minimum": 100, "maximum": 599 },
+    "evidence": { "type": "string", "enum": ["complete", "truncated"] },
     "attacks_before": { "type": "integer", "minimum": 0 },
     "attacks_after": { "type": "integer", "minimum": 0 },
     "attack_cap": { "type": "integer", "minimum": 0 },

@@ -125,7 +125,9 @@ def reconstruct(conn: sqlite3.Connection, correlation_id: str) -> dict[str, Any]
             "SELECT 1 FROM content_rejections WHERE correlation_id = ? AND call_id = ?",
             (correlation_id, item["call_id"]),
         ).fetchone()
-        if item["role"] not in log_roles and rejected is None:
+        # The executor step is journaled as executor and logged as harness. run_logs has no executor value.
+        logged = "harness" if item["role"] == "executor" else item["role"]
+        if logged not in log_roles and rejected is None:
             gaps.append({"kind": "missing", "what": f"run_logs for {item['call_id']}"})
     reports = [
         {

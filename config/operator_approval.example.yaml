@@ -6,4 +6,15 @@
 #     scope: local-target
 #     max_usd: 5.0
 #     purpose: local-p4
+#   - approved_by: operator-name
+#     approved_on: 2026-10-22
+#     scope: openrouter
+#     max_usd: 5.0
+#     purpose: first-public-campaign
+#   - approved_by: operator-name
+#     approved_on: 2026-10-22
+#     scope: public-target
+#     max_usd: 0
+#     purpose: project-2-copilot-via-quick-tunnel
+#     origin: https://REPLACE_ME.trycloudflare.com
 approvals: []

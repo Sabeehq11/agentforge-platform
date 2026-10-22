@@ -309,8 +309,20 @@ def test_every_shipped_template_exists() -> None:
 
 
 # --- preflight ------------------------------------------------------------------------------------------------
-def test_preflight_is_no_go_on_the_real_repo() -> None:
-    results = run_preflight(ROOT, today=TODAY)
+def test_preflight_is_no_go_on_the_real_repo(tmp_path: Path) -> None:
+    local = (
+        (ROOT / "config" / "allowlist.local.yaml", tmp_path / "allowlist.local.yaml"),
+        (ROOT / "config" / "operator_approval.yaml", tmp_path / "operator_approval.yaml"),
+    )
+    moved = [(source, hidden) for source, hidden in local if source.exists()]
+    for source, hidden in moved:
+        source.rename(hidden)
+    try:
+        results = run_preflight(ROOT, today=TODAY)
+    finally:
+        for source, hidden in moved:
+            if hidden.exists() and not source.exists():
+                hidden.rename(source)
     assert not all(item.go for item in results)
     assert gate(results, "flags_false").go
     for name in (

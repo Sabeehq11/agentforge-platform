@@ -3,6 +3,8 @@
 .env.*
 !.env.example
 config/operator_approval.yaml
+config/allowlist.local.yaml
+config/live.local
 *.db
 *.sqlite
 *.sqlite3

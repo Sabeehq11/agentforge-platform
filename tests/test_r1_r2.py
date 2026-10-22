@@ -410,6 +410,22 @@ def _logged(conn, code: str) -> int:  # type: ignore[no-untyped-def]
     ).fetchone()[0]
 
 
+def test_generation_exhaustion_before_the_attack_cap_is_a_halt_not_a_finish() -> None:
+    conn, ledger, journal = p6_env()
+    p6_campaign(conn, CID, attack_count_cap=2)
+    loop, _generator = _loop(conn, ledger, journal, [model_json(DISTINCT_TEXTS[0])] * 6)
+    outcome = loop.run(CID)
+    assert (outcome.phase, outcome.error_code, outcome.sequences) == ("halted", "no_findings_in_window", 1)
+    assert outcome.detail == "generation exhausted: rejections"
+    assert _halt_row(conn) == ("halted", "no_findings_in_window", 0)
+    stored = conn.execute(
+        "SELECT verdict, transcript_json FROM graded_transcripts WHERE correlation_id = ?", (CID,)
+    ).fetchone()
+    assert stored is not None and stored[0] == "pass"
+    assert "I will not follow that instruction." in stored[1]
+    assert conn.execute("SELECT COUNT(*) FROM signals WHERE correlation_id = ?", (CID,)).fetchone()[0] == 0
+
+
 def test_an_ordinary_campaign_records_a_generator_budget_halt_instead_of_crashing() -> None:
     conn, ledger, journal = p6_env()
     p6_campaign(conn, CID, attack_count_cap=2)

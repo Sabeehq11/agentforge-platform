@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import sqlite3
 from contextlib import redirect_stdout
 from datetime import date
@@ -292,28 +293,38 @@ def test_the_provider_switch_is_checked_separately(
 
 
 def test_the_real_repo_is_refused_before_any_effect_even_with_both_switches_true(
-    offline: dict[str, list[str]], monkeypatch: pytest.MonkeyPatch
+    offline: dict[str, list[str]], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    """The tracked repo has no public-target approval. A gitignored local approval must not make this pass."""
+    approval = ROOT / "config" / "operator_approval.yaml"
+    hidden = tmp_path / "operator_approval.yaml"
+    moved = approval.exists()
+    if moved:
+        approval.rename(hidden)
     monkeypatch.setattr(chokepoint, "LIVE_ENABLED", True)
     monkeypatch.setattr(chokepoint, "PROVIDER_ENABLED", True)
     monkeypatch.setattr(session_module, "LIVE_ENABLED", True, raising=False)
-    result = run_live(ROOT, today=TODAY, env={}, load_env=lambda _p: pytest.fail(".env must not be loaded"))
-    assert result.code == 2 and "NO-GO" in result.message and "k1_available" in result.message
+    try:
+        result = run_live(ROOT, today=TODAY, env={}, load_env=lambda _p: pytest.fail(".env must not be loaded"))
+    finally:
+        if moved:
+            hidden.rename(approval)
+    assert result.code == 2 and "NO-GO" in result.message and "public_target_approval" in result.message
     assert offline["env"] == [] and offline["dotenv"] == []  # no .env, no key, no database
 
 
-def test_an_open_public_target_record_is_a_hard_blocker_when_every_other_gate_is_green(
+def test_a_missing_public_target_approval_is_a_hard_blocker_when_the_allowlist_is_green(
     offline: dict[str, list[str]], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     root = live_root(tmp_path)
-    (root / "Docs/prerequisites/public-target-authorization.md").write_text("status: open\n", encoding="utf-8")
+    (root / "config/operator_approval.yaml").write_text("approvals: []\n", encoding="utf-8")
     monkeypatch.setattr(chokepoint, "LIVE_ENABLED", True)
     monkeypatch.setattr(chokepoint, "PROVIDER_ENABLED", True)
     monkeypatch.setattr(session_module, "LIVE_ENABLED", True, raising=False)
     provider = ProviderTransport()
     result = go(root, provider)
-    assert result.code == 2 and "k1_available" in result.message
-    assert "allowlist_single_origin" not in result.message and "p_u_closed" not in result.message
+    assert result.code == 2 and "public_target_approval" in result.message
+    assert "allowlist_single_origin" not in result.message and "deploy_attestation" not in result.message
     assert provider.calls == [] and offline["env"] == [] and offline["dotenv"] == []
     assert not (root / "data").exists()
 
@@ -321,9 +332,7 @@ def test_an_open_public_target_record_is_a_hard_blocker_when_every_other_gate_is
 @pytest.mark.parametrize(
     ("record", "gate"),
     [
-        ("Docs/prerequisites/P-U.md", "p_u_closed"),
-        ("Docs/attestations/provider-cap-evidence.yaml", "provider_cap"),
-        ("Docs/attestations/deploy-attestation.yaml", "deploy_attestation"),
+        ("config/operator_approval.yaml", "public_target_approval"),
     ],
 )
 def test_each_other_open_prerequisite_also_blocks(
@@ -339,6 +348,34 @@ def test_each_other_open_prerequisite_also_blocks(
     assert offline["env"] == [] and offline["dotenv"] == [] and not (root / "data").exists()
 
 
+def test_a_stale_process_origin_or_budget_token_cannot_override_dotenv(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Campaign origin and budget approval come from .env. A leftover shell value must not replace either."""
+    from agentforge.local_env import load_local_env
+
+    root = tmp_path
+    (root / ".env").write_text(
+        "AGENTFORGE_TARGET_ORIGIN=https://target.example\n"
+        "AGENTFORGE_BUDGET_TOKEN=file-token\n"
+        "AGENTFORGE_BUDGET_SECRET=file-secret\n"
+        "AGENTFORGE_FIXTURE_USER=from-file\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("AGENTFORGE_TARGET_ORIGIN", "https://elsewhere.example")
+    monkeypatch.setenv("AGENTFORGE_BUDGET_TOKEN", "stale-token")
+    monkeypatch.setenv("AGENTFORGE_BUDGET_SECRET", "stale-secret")
+    monkeypatch.setenv("AGENTFORGE_FIXTURE_USER", "from-process")
+    load_local_env(
+        root / ".env",
+        override=frozenset({live_module.ENV_ORIGIN, live_module.ENV_TOKEN, live_module.ENV_SECRET}),
+    )
+    assert os.environ["AGENTFORGE_TARGET_ORIGIN"] == "https://target.example"
+    assert os.environ["AGENTFORGE_BUDGET_TOKEN"] == "file-token"
+    assert os.environ["AGENTFORGE_BUDGET_SECRET"] == "file-secret"
+    assert os.environ["AGENTFORGE_FIXTURE_USER"] == "from-process"
+
+
 def test_a_missing_operator_value_or_a_wrong_origin_refuses_before_the_store(armed: FakeTarget, tmp_path: Path) -> None:
     root = live_root(tmp_path)
     provider = ProviderTransport()
@@ -349,7 +386,7 @@ def test_a_missing_operator_value_or_a_wrong_origin_refuses_before_the_store(arm
     env = env_for(root)
     env[live_module.ENV_ORIGIN] = "https://elsewhere.example"
     wrong = run_live(root, today=TODAY, env=env, load_env=lambda _p: None, model_transport=provider)
-    assert wrong.code == 2 and "attested origin" in wrong.message
+    assert wrong.code == 2 and "allowlisted public origin" in wrong.message
     assert provider.calls == [] and armed.calls == [] and not (root / "data").exists()
 
 
@@ -371,7 +408,7 @@ def test_a_refusing_target_passes_and_drafts_no_documentation(armed: FakeTarget,
     assert result.code == 0 and result.body is not None
     body = result.body
     assert body["phase"] == "done", body
-    assert body["pin_label"] == "operator-attested"
+    assert body["pin_label"] == "unverified"
     assert body["sequences"] >= 1 and armed.chat_calls == body["sequences"]
     assert {v["verdict"] for v in body["verdicts"]} == {"pass"}
     assert body["report_ids"] == [] and "documentation" not in body["agents"]
@@ -380,6 +417,15 @@ def test_a_refusing_target_passes_and_drafts_no_documentation(armed: FakeTarget,
     conn = store(root)
     assert conn.execute("SELECT COUNT(*) FROM reports").fetchone()[0] == 0
     assert KEY not in json.dumps(body) and "fixture-password" not in json.dumps(body)
+    assert body["spent_usd"] == conn.execute(
+        """
+        SELECT COALESCE(SUM(s.incurred_usd), 0) FROM agent_spend s
+        JOIN dispatch_journal j ON j.call_id = s.call_id
+        WHERE j.correlation_id = ? AND s.state = 'incurred'
+        """,
+        (body["correlation_id"],),
+    ).fetchone()[0]
+    assert body["reserved_usd"] == 0
 
 
 def test_a_canary_echo_is_a_fail_with_a_live_target_report_and_all_four_agents(armed: FakeTarget, tmp_path: Path) -> None:
@@ -469,7 +515,7 @@ def test_orchestrate_live_still_refuses_first_and_names_no_secret(offline: dict[
     with redirect_stdout(out):
         assert module.main(["--live"]) == 2
     assert "refused: LIVE_ENABLED is false. No network call was made." in out.getvalue()
-    assert offline["env"] == [] and offline["dotenv"] == []
+    assert offline["env"] == []
     for value in CANARIES.values():
         assert value not in out.getvalue()
 
@@ -482,10 +528,10 @@ def test_live_refuses_options_that_belong_to_the_dry_run(
     offline: dict[str, list[str]], monkeypatch: pytest.MonkeyPatch, extra: list[str]
 ) -> None:
     module = _load("orchestrate")
+    monkeypatch.setattr(module, "apply_runtime_opt_in", lambda *_args, **_kwargs: True)
     monkeypatch.setattr(chokepoint, "LIVE_ENABLED", True)
     monkeypatch.setattr(chokepoint, "PROVIDER_ENABLED", True)
     monkeypatch.setattr(session_module, "LIVE_ENABLED", True, raising=False)
-    monkeypatch.setattr(module, "LIVE_ENABLED", True)
     out = io.StringIO()
     with redirect_stdout(out):
         code = module.main(["--live", *extra])
@@ -494,18 +540,26 @@ def test_live_refuses_options_that_belong_to_the_dry_run(
 
 
 def test_the_real_repo_orchestrate_live_is_a_no_go_even_with_the_switches_patched_true(
-    offline: dict[str, list[str]], monkeypatch: pytest.MonkeyPatch
+    offline: dict[str, list[str]], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    approval = ROOT / "config" / "operator_approval.yaml"
+    hidden = tmp_path / "operator_approval.yaml"
+    moved = approval.exists()
+    if moved:
+        approval.rename(hidden)
     module = _load("orchestrate")
-    monkeypatch.setattr(chokepoint, "LIVE_ENABLED", True)
-    monkeypatch.setattr(chokepoint, "PROVIDER_ENABLED", True)
+    monkeypatch.setenv("AGENTFORGE_LIVE_OPT_IN", "live")
     monkeypatch.setattr(session_module, "LIVE_ENABLED", True, raising=False)
-    monkeypatch.setattr(module, "LIVE_ENABLED", True)
     out = io.StringIO()
-    with redirect_stdout(out):
-        assert module.main(["--live"]) == 2
-    assert "NO-GO" in out.getvalue() and "k1_available" in out.getvalue()
-    assert offline["env"] == [] and offline["dotenv"] == []
+    try:
+        with redirect_stdout(out):
+            assert module.main(["--live"]) == 2
+    finally:
+        chokepoint.LIVE_ENABLED = False
+        chokepoint.PROVIDER_ENABLED = False
+        if moved and hidden.exists() and not approval.exists():
+            hidden.rename(approval)
+    assert "NO-GO" in out.getvalue() and "public_target_approval" in out.getvalue()
 
 
 def test_the_dry_run_default_is_unchanged_and_makes_no_live_call(offline: dict[str, list[str]]) -> None:

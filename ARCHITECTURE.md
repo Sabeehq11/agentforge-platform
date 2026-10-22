@@ -236,8 +236,8 @@ Not applicable. The platform exposes no list endpoint and consumes none. If a li
 
 ## Deployment note (H-1)
 
-- **Built.** The platform runs locally. The target it was tested against is a local Docker stack at `127.0.0.1:8300`, and the allowlist (`config/allowlist.yaml`) admits only that host.
-- **Open.** There is no deployed public URL. This is gap **G-1 / H-1**. **Owner: the operator.** Nothing in this repository can supply a public hostname.
+- **Built.** The platform runs locally. The target it was tested against is a local Docker stack at `127.0.0.1:8300`. The tracked allowlist admits only that host. A temporary public hostname belongs in gitignored `config/allowlist.local.yaml`, not in the tracked file.
+- **Open.** There is no deployed public URL until the operator writes that local file and a same-day `public-target` approval for the same origin. This is gap **G-1 / H-1**. **Owner: the operator.** Nothing in this repository can supply a public hostname.
 - **Closeout steps** (any later checkpoint, once the operator answers Q2):
   1. The operator supplies the current URL.
   2. A reviewed `config/allowlist.yaml` edit adds the host.

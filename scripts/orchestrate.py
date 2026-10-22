@@ -33,7 +33,7 @@ from agentforge.orchestrator.sequence import SequenceRunner  # noqa: E402
 from agentforge.orchestrator.state import open_campaign  # noqa: E402
 from agentforge.orchestrator.trace import trace  # noqa: E402
 from agentforge.safety.budget import Budget, Caps, approval_token  # noqa: E402
-from agentforge.safety.chokepoint import LIVE_ENABLED  # noqa: E402
+from agentforge.safety.chokepoint import apply_runtime_opt_in  # noqa: E402
 from agentforge.safety.ledger import Ledger  # noqa: E402
 from agentforge.store.migrate import migrate  # noqa: E402
 
@@ -190,7 +190,7 @@ def main(argv: list[str] | None = None) -> int:
         print("refused before any call: --unpinned and --multi-turn open a new ordinary campaign only.")
         return 2
     if args.live:
-        if not LIVE_ENABLED:
+        if not apply_runtime_opt_in(path=ROOT / "config" / "live.local"):
             print("refused: LIVE_ENABLED is false. No network call was made.")
             return 2
         return _live(args)

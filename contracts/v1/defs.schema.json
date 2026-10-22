@@ -44,7 +44,8 @@
       "required": ["role", "content"],
       "properties": {
         "role": { "type": "string", "enum": ["user", "target"] },
-        "content": { "type": "string", "minLength": 1, "maxLength": 8000 }
+        "content": { "type": "string", "minLength": 1, "maxLength": 8000 },
+        "evidence": { "type": "string", "enum": ["complete", "truncated"] }
       }
     },
     "input_sequence": {

@@ -26,7 +26,7 @@ from agentforge.orchestrator.policy import Config, validate_variants
 from agentforge.orchestrator.priority import next_category
 from agentforge.orchestrator.retry import Halt
 from agentforge.orchestrator.sequence import PreflightRefused, SequenceResult, SequenceRunner
-from agentforge.orchestrator.signals import record_signal
+from agentforge.orchestrator.signals import record_graded_transcript, record_signal
 from agentforge.orchestrator.state import (
     bump,
     halt,
@@ -249,8 +249,10 @@ class CampaignLoop:
                 if exc.halt is not None:
                     return self._from_halt(correlation_id, exc.halt.halt)  # GenerationStopped.halt is a StepHalt
                 if mode is not None or chosen != "mutation":
-                    # The campaign's own mode produced nothing. A requested multi-turn is not quietly run as one turn.
-                    return None
+                    # Novel generation is exhausted before the attack cap. That is a stop, not a finished campaign.
+                    return self._stop(
+                        correlation_id, "no_findings_in_window", False, f"generation exhausted: {exc.kind}"
+                    )
                 # A mutation produced nothing. Do not select it again for this category.
                 blocked.add(chosen)
                 continue
@@ -329,6 +331,7 @@ class CampaignLoop:
             self._conn, result, judged, executed.transcript,
             parent_id=generated.parent_signal_id, depth=generated.depth,
         )
+        record_graded_transcript(self._conn, result, judged, executed.transcript)
         if _graded(judged):
             campaign = require_campaign(self._conn, correlation_id)
             coverage_from(

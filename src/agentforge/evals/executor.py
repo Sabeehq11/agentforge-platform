@@ -33,7 +33,8 @@ from agentforge.evals.graders import (
 from agentforge.evals.session import CHAT_PATH, SessionClient, SessionError
 from agentforge.safety.allowlist import Allowlist
 from agentforge.safety.budget import Budget, BudgetError
-from agentforge.safety.chokepoint import LIVE_ENABLED, TARGET_PROVIDER, RefusedByChokepoint, Response, Transport, request
+from agentforge.safety import chokepoint as _chokepoint
+from agentforge.safety.chokepoint import TARGET_PROVIDER, RefusedByChokepoint, Response, Transport, request
 from agentforge.safety.identity import IdentityMismatch
 from agentforge.safety.phi import PhiRefused, require_clean
 from agentforge.safety.operator_approval import OperatorApproval
@@ -257,7 +258,7 @@ def run_session_case(
             "not_run",
             "no verified authorized workflow in the pinned source; chat was not sent",
         )
-    if not LIVE_ENABLED and not client.fake_transport:
+    if not _chokepoint.LIVE_ENABLED and not client.fake_transport:
         return _result(case, "not_run", "LIVE_ENABLED is false; env flags cannot start a live call")
     # The client ledger releases a reservation at $0 when the transport fails after dispatch. That understates
     # spend, so a billable chat on that path is refused before login, identity, or any other request.
@@ -371,7 +372,7 @@ def run_live_case(
         return _result(case, "not_run", "TM-DS-3 was not sent to the target; a local cap stop is not a graded result")
     if provider != TARGET_PROVIDER:
         return _result(case, "not_run", "a target request cannot use a platform provider attestation")
-    if not LIVE_ENABLED and not fake_transport:
+    if not _chokepoint.LIVE_ENABLED and not fake_transport:
         return _result(case, "not_run", "LIVE_ENABLED is false; env flags cannot start a live call")
     try:
         response = request(

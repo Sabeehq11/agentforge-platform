@@ -29,6 +29,40 @@ _PLACEHOLDERS = frozenset(
 )
 
 
+_LOCAL_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
+_PUBLIC_PREFIXES = ("/interface", "/library/ajax")
+
+
+def merge_public_host(data: Any, host: str) -> dict[str, Any]:
+    """Return allowlist data with localhost entries kept and exactly one public host added.
+
+    A blank host returns the original data unchanged. A wildcard or a second public host is not accepted: the
+    caller must not pass one. Existing public entries are replaced so a stale tunnel hostname cannot linger.
+    """
+    base = data if isinstance(data, dict) else {}
+    name = host.strip()
+    if not name:
+        return base
+    raw = base.get("entries")
+    kept = []
+    if isinstance(raw, list):
+        for entry in raw:
+            if not isinstance(entry, dict):
+                continue
+            if str(entry.get("host", "")).lower() in _LOCAL_HOSTS:
+                kept.append(entry)
+    merged = dict(base)
+    public = name.lower().rstrip(".")
+    merged["entries"] = [
+        *kept,
+        *(
+            {"scheme": "https", "host": public, "port": 443, "path_prefix": prefix}
+            for prefix in _PUBLIC_PREFIXES
+        ),
+    ]
+    return merged
+
+
 def load_mapping(path: Path) -> dict[str, Any] | None:
     """A missing, unreadable or non-mapping file is None, so the caller treats it as absent."""
     try:

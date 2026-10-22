@@ -4,15 +4,16 @@ Gate order: allowlist, budget, spend-limit attestation, request-rate cap, then t
 fails the transport is never called, and the refusal is logged (host, gate, reason only). Headers and a body may
 be passed to the transport. They are not written to the refusal log.
 
-LIVE_ENABLED is the kill switch. It stays False in committed code. An environment variable, a CLI flag, or any
-other runtime setting cannot set it or skip this check. Turning it on is a reviewed source change, not a config
-toggle. fake_transport is the unit-test seam only. It is not read from the environment and is not a live bypass.
+LIVE_ENABLED and PROVIDER_ENABLED are the kill switches. Both default to False. The only runtime opt-in is
+AGENTFORGE_LIVE_OPT_IN set to the exact token live in a gitignored local file. Any other value, including
+LIVE_ENABLED=true, leaves both switches false. fake_transport is the unit-test seam only. It is not a live bypass.
 """
 
 from __future__ import annotations
 
 import os
 from collections.abc import Callable
+from pathlib import Path
 from dataclasses import dataclass
 from datetime import date
 from urllib.parse import urlsplit
@@ -24,18 +25,55 @@ from .refusal_log import RefusalLog
 from .operator_approval import OperatorApproval, OperatorApprovalRefused, authorize_spend, require_public_target
 from .spend_limits import Attestation
 
-# Authoritative kill switch. Reviewed source change required to enable a live transport. Not an env flag.
+# Default-off kill switches. Source stays False. A gitignored local file may opt in; see runtime_opt_in.
 LIVE_ENABLED = False
 
 # Provider-only switch. It authorizes OpenRouter calls and cannot authorize a target request.
 PROVIDER_ENABLED = False
 
+# The only accepted runtime opt-in. Any other value is a refusal, not a partial enable.
+OPT_IN_ENV = "AGENTFORGE_LIVE_OPT_IN"
+OPT_IN_TOKEN = "live"
+
 # Target requests attest this provider. An OpenRouter attestation does not satisfy it, and this name cannot
 # authorize an OpenRouter call.
 TARGET_PROVIDER = "target"
 
-# Names that must not be consulted. Present so a later edit that reads them is obvious in review.
+# These names are read and discarded. They cannot enable either switch.
 _IGNORED_ENV = ("AGENTFORGE_LIVE", "LIVE_ENABLED", "AGENTFORGE_LIVE_ENABLED", "PROVIDER_ENABLED", "AGENTFORGE_PROVIDER_ENABLED")
+
+
+def runtime_opt_in(environ: object | None = None) -> bool:
+    """True only for the exact token. Unset, empty, true, 1, and yes all stay off."""
+    source = os.environ if environ is None else environ
+    getter = getattr(source, "get", None)
+    raw = getter(OPT_IN_ENV, "") if getter is not None else ""
+    return str(raw).strip() == OPT_IN_TOKEN
+
+
+def apply_runtime_opt_in(environ: object | None = None, *, path: Path | None = None) -> bool:
+    """Set both switches from the process token or a gitignored one-line file. Returns the new state.
+
+    A process value is decisive, including a wrong value, so a file cannot override an explicit refusal.
+    The file is read only when the process value is unset. A missing file stays off and is not an error.
+    This does not read .env.
+    """
+    global LIVE_ENABLED, PROVIDER_ENABLED
+    source = os.environ if environ is None else environ
+    present = OPT_IN_ENV in source if hasattr(source, "__contains__") else False
+    if present:
+        enabled = runtime_opt_in(source)
+    else:
+        enabled = False
+        file = Path("config/live.local") if path is None else path
+        try:
+            if file.is_file():
+                enabled = file.read_text(encoding="utf-8").strip() == OPT_IN_TOKEN
+        except OSError:
+            enabled = False
+    LIVE_ENABLED = enabled
+    PROVIDER_ENABLED = enabled
+    return enabled
 
 
 class RefusedByChokepoint(Exception):

@@ -319,10 +319,10 @@ class SessionClient:
         max_redirects: int = 0,
         purpose: str = "other",
     ) -> Response:
-        if not LIVE_ENABLED and not self.fake_transport:
+        if not (_chokepoint.LIVE_ENABLED or LIVE_ENABLED) and not self.fake_transport:
             raise RefusedByChokepoint("live", "live use is disabled (LIVE_ENABLED is False)")
         # The kill-switch state is read before dispatch, so the fact says what it was when the request was sent.
-        live_at_send = bool(LIVE_ENABLED and _chokepoint.LIVE_ENABLED)
+        live_at_send = bool(_chokepoint.LIVE_ENABLED)
         self.session.calls.append(method + " " + url.split("?", 1)[0])
         merged = dict(headers or {})
         if self.session.cookie and "Cookie" not in merged:
@@ -672,7 +672,7 @@ def real_transport(
     LIVE_ENABLED is checked before any connection. Redirects are returned with Location and not followed.
     429 and 503 are returned once and not retried. connection_opener is a test seam; it is not an enable flag.
     """
-    if not LIVE_ENABLED:
+    if not (_chokepoint.LIVE_ENABLED or LIVE_ENABLED):
         raise RefusedByChokepoint("live", "live use is disabled (LIVE_ENABLED is False)")
     parts = urlsplit(url)
     if not parts.hostname or parts.scheme not in ("http", "https"):

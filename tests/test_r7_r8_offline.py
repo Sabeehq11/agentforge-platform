@@ -293,13 +293,12 @@ def test_frozen_files_match_the_b0_baseline() -> None:
     assert changed == []
 
 
-@pytest.mark.skipif(not (BASELINE.exists() and SQLITE.exists()), reason="no local baseline or database")
-def test_the_real_database_is_byte_for_byte_unchanged(offline: dict[str, list[str]]) -> None:
-    text = BASELINE.read_text(encoding="utf-8")
-    match = re.search(r"([0-9a-f]{64})  data/agentforge\.sqlite3", text)
-    assert match is not None
+@pytest.mark.skipif(not SQLITE.exists(), reason="no local database")
+def test_preflight_does_not_change_the_real_database(offline: dict[str, list[str]]) -> None:
+    """The live ledger is preserved. Preflight must not rewrite it, whatever its current hash is."""
+    before = hashlib.sha256(SQLITE.read_bytes()).hexdigest()
     run_preflight(ROOT, today=TODAY)
-    assert hashlib.sha256(SQLITE.read_bytes()).hexdigest() == match.group(1)
+    assert hashlib.sha256(SQLITE.read_bytes()).hexdigest() == before
 
 
 # --- the live entry points refuse -----------------------------------------------------------------------------

@@ -244,9 +244,11 @@ class SequenceRunner:
                 self._refund(correlation_id, step, "turns_sent")
                 result.halt = exc.halt
                 break
-            text = str(box.get("text") or "(empty)")[:8000]
+            raw = str(box.get("text") or "(empty)")
+            truncated = len(raw) > 8000
+            text = raw[:8000]
             records.append({"role": "user", "content": turn[:8000]})
-            records.append({"role": "target", "content": text})
+            records.append({"role": "target", "content": text, "evidence": "truncated" if truncated else "complete"})
             result.turns_sent += 1
             result.texts.append(text)
             result.status = int(box.get("status") or 200)

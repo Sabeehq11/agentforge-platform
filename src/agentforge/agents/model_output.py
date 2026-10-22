@@ -28,8 +28,9 @@ _TOOLISH = re.compile(r"<\s*/?\s*(system|assistant|tool)\b|\"role\"\s*:|\bfuncti
 class OutputRejected(Exception):
     """The model output was refused. It is not repaired, not sent and not counted as an attack."""
 
-    def __init__(self, reason: str) -> None:
+    def __init__(self, reason: str, *, turns: tuple[str, ...] = ()) -> None:
         self.reason = reason
+        self.turns = turns
         super().__init__(reason)
 
 

@@ -1,0 +1,4 @@
+# Copy to config/allowlist.local.yaml. That file is gitignored.
+# One exact hostname from the current Cloudflare quick tunnel for https://127.0.0.1:9300.
+# No scheme, no port, no path, no wildcard. A missing or malformed file adds no public host.
+public_host: REPLACE_ME.trycloudflare.com

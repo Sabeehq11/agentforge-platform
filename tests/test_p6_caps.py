@@ -53,6 +53,17 @@ def test_a_three_turn_sequence_counts_one_sequence_and_three_turns() -> None:
     assert result.transcript is not None and len(result.transcript["turns"]) == 6
 
 
+def test_a_target_response_longer_than_8000_characters_is_marked_truncated() -> None:
+    runner, _conn, _target, _journal = _runner(target=FakeTarget([answer("x" * 8001)]))
+    result = runner.run(CID, ("alpha one two",), "t-1")
+    assert result.transcript is not None
+    target = next(turn for turn in result.transcript["turns"] if turn["role"] == "target")
+    assert target["evidence"] == "truncated" and len(target["content"]) == 8000
+    short = _runner()[0].run(CID, ("alpha one two",), "t-2")
+    assert short.transcript is not None
+    assert next(turn for turn in short.transcript["turns"] if turn["role"] == "target")["evidence"] == "complete"
+
+
 def test_splitting_an_attack_cannot_lower_any_counter() -> None:
     runner, conn, target, _ = _runner()
     for index, text in enumerate(("alpha one two", "beta three four", "gamma five six")):

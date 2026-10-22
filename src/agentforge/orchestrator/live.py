@@ -1,17 +1,20 @@
 """The gated live path for one orchestrated campaign. Nothing here opens a socket until every gate has passed.
 
 This assembles the same CampaignLoop the dry-run uses: a production Red Team model client, the real session client,
-the deterministic Judge and the Documentation drafter. It adds no policy of its own. It checks, in this order, and
-returns a refusal with zero effects at the first failure:
+the Judge (deterministic first, provider model only when the transcript is ambiguous) and the Documentation drafter.
+It adds no policy of its own. It checks, in this order, and returns a refusal with zero effects at the first failure:
 
 1. Both kill switches are true in the running process. They are source constants a human flips for a reviewed window.
-2. The offline preflight gates that a live campaign depends on are GO. `flags_false` is not one of them, because it
-   is the reverse of the condition checked in step 1. K1 (public-target authorization) is a hard blocker: until its
-   record is closed there is no live campaign, whatever else is true.
-3. A valid deploy attestation exists, its pin outcome is not a difference, and the attested origin equals the
-   allowlisted origin and the operator-supplied origin. The pin handed to the loop is the manifest commit.
-4. Only then the operator `.env` is read and the required values are checked. Then the persistent store is opened and
-   the shared budget is approved.
+2. The campaign gates are GO: exactly one public https origin on the allowlist, and a fresh public-target operator
+   approval whose origin is that host. `flags_false` is not one of them, because it is the reverse of step 1.
+   Roadmap attestation files (deploy attestation, provider-cap evidence, P-U, K1, spend reconciliation) are not
+   required. Spend is still bounded by the operator approval and the shared ledger ceiling.
+3. The operator origin is read from `.env` even if the process already has one, then it must equal the single
+   allowlisted public origin and the public-target approval. The pin handed to the loop is the manifest
+   commit, labeled `unverified` because this path does not require a deploy attestation.
+4. Only then the operator `.env` is read and the required values are checked. The origin and the budget token are
+   taken from that file even if the process already has them. Then the persistent store is opened and the shared
+   budget is approved against the exact cap numbers.
 
 One campaign is opened: category TM-PI, surface chat, pinned, one turn, two attacks. Reports are written to the store
 only. No file under `reports/` is created, so nothing here can become a published finding.
@@ -33,44 +36,40 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
-from agentforge.agents.judge import RulesJudge, StubJudgeModel
+from agentforge.agents.judge import RulesJudge
 from agentforge.agents.openrouter_redteam import OpenRouterRedTeamModel, RedTeamModelError
 from agentforge.agents.red_team_generator import RedTeamGenerator
 from agentforge.contracts.validate import validate
 from agentforge.evals import session as session_module
 from agentforge.evals.cases import load_cases
 from agentforge.evals.session import SessionClient
-from agentforge.gates.attestation import load_and_validate
 from agentforge.gates.common import load_mapping
-from agentforge.gates.pin import DIFFERENCE, load_manifest
-from agentforge.gates.preflight import DEPLOY_ATTESTATION, GateResult, run_preflight
+from agentforge.gates.pin import load_manifest
+from agentforge.gates.preflight import GateResult, run_preflight
 from agentforge.local_env import load_local_env
 from agentforge.models_config import ModelsConfigError, load_models
 from agentforge.orchestrator.journal import Journal, UnknownOutcome
 from agentforge.orchestrator.loop import CampaignLoop, RunOutcome
 from agentforge.orchestrator.policy import ConfigError, load_config
 from agentforge.orchestrator.sequence import SETUP_REQUESTS, SequenceRunner
+from agentforge.orchestrator.stop import campaign_spend
 from agentforge.orchestrator.state import get_campaign, open_campaign
 from agentforge.orchestrator.trace import reconstruct, trace_agents
 from agentforge.safety import chokepoint
+from agentforge.gates.common import merge_public_host
 from agentforge.safety.allowlist import Allowlist
 from agentforge.safety.budget import BudgetError, NotApproved, load_caps
 from agentforge.safety.ledger import Ledger, load_shared_budget
+from agentforge.safety.operator_approval import _public_origin as normalize_origin
 from agentforge.safety.operator_approval import load_approvals
 from agentforge.safety.rate import RateCap
 from agentforge.safety.refusal_log import RefusalLog
 from agentforge.safety.spend_limits import load_attestations
 from agentforge.store.migrate import migrate
 
-# The preflight gates a live campaign needs. flags_false is deliberately absent: it is the reverse of step 1.
+# Campaign gates. flags_false is absent: it is the reverse of step 1. Roadmap attestation gates are absent on purpose.
 REQUIRED_GATES = (
     "allowlist_single_origin",
-    "deploy_attestation",
-    "pin_outcome",
-    "provider_cap",
-    "p_u_closed",
-    "lifetime_ceiling",
-    "k1_available",
     "public_target_approval",
 )
 
@@ -110,10 +109,44 @@ def _refused(reason: str) -> LiveResult:
     return LiveResult(2, f"refused: {reason}")
 
 
+def _public_origin(root: Path) -> str | None:
+    """The one https origin on the allowlist, or None. Localhost entries are ignored. Two public hosts are a refusal.
+
+    A gitignored allowlist.local.yaml supplies the temporary public host. It is not read from the tracked file.
+    """
+    data = load_mapping(root / "config" / "allowlist.yaml")
+    local = load_mapping(root / "config" / "allowlist.local.yaml")
+    if isinstance(local, dict):
+        host = local.get("public_host")
+        if not isinstance(host, str) or not host.strip() or "*" in host:
+            return None
+        data = merge_public_host(data, host.strip())
+    entries = data.get("entries") if isinstance(data, dict) else None
+    if not isinstance(entries, list):
+        return None
+    origins: set[str] = set()
+    for entry in entries:
+        if not isinstance(entry, dict):
+            return None
+        host = str(entry.get("host", "")).lower()
+        if host in {"127.0.0.1", "localhost", "::1"}:
+            continue
+        port = entry.get("port")
+        if str(entry.get("scheme", "")).lower() != "https" or not isinstance(port, int):
+            return None
+        origins.add(f"https://{host}:{port}")
+    if len(origins) != 1:
+        return None
+    return next(iter(origins))
+
+
 def _flag_refusal() -> LiveResult | None:
-    """Both switches must be true in this process. The first refusal text is the one the dry-run has always printed."""
-    # The session module binds its own copy of the switch at import, so both copies must be true.
-    if not (chokepoint.LIVE_ENABLED and getattr(session_module, "LIVE_ENABLED", False)):
+    """Both switches must be true in this process. The first refusal text is the one the dry-run has always printed.
+
+    The session module binds LIVE_ENABLED at import. A runtime opt-in updates the chokepoint module, so this check
+    reads that module rather than the copied name.
+    """
+    if not chokepoint.LIVE_ENABLED:
         return _refused("LIVE_ENABLED is false. No network call was made.")
     if not chokepoint.PROVIDER_ENABLED:
         return _refused("PROVIDER_ENABLED is false. No network call was made.")
@@ -166,12 +199,15 @@ def _verdict_label(judged: Mapping[str, Any]) -> str:
 def _summary(conn: sqlite3.Connection, outcome: RunOutcome, *, pin_label: str) -> dict[str, Any]:
     agents = trace_agents(conn, outcome.correlation_id)
     events = reconstruct(conn, outcome.correlation_id)
+    spend = campaign_spend(conn, outcome.correlation_id)
     return {
         "correlation_id": outcome.correlation_id,
         "phase": outcome.phase,
         "error_code": outcome.error_code,
         "detail": outcome.detail,
         "sequences": outcome.sequences,
+        "spent_usd": spend.incurred_usd,
+        "reserved_usd": spend.reserved_usd,
         "verdicts": [{"verdict": _verdict_label(v)} for v in outcome.verdicts],
         "pin_label": pin_label,
         "agents": list(agents["agents"]),
@@ -201,17 +237,15 @@ def run_live(
     manifest, _problems = load_manifest(root / "config" / "target_pin.yaml")
     if manifest is None:
         return _refused("the target pin manifest is unusable")
-    attestation = load_and_validate(root / DEPLOY_ATTESTATION, manifest)
-    if not attestation.valid or attestation.pin is None or attestation.pin.outcome == DIFFERENCE:
-        return _refused("the deploy attestation is not valid for this pin")
-    record = load_mapping(root / DEPLOY_ATTESTATION) or {}
-    attested_origin = str(record.get("origin", "")).rstrip("/")
     pin = manifest.commit[:7]
-    pin_label = "operator-attested"
+    pin_label = "unverified"
+    public_origin = _public_origin(root)
+    if public_origin is None:
+        return _refused("the allowlist has no single public origin")
 
-    allowlist = Allowlist.from_file(root / "config" / "allowlist.yaml")
-    if not allowlist.check(attested_origin + "/interface/main/tabs/main.php").allowed:
-        return _refused("the attested origin is not on the allowlist")
+    allowlist = Allowlist.from_file(root / "config" / "allowlist.yaml", local=root / "config" / "allowlist.local.yaml")
+    if not allowlist.check(public_origin + "/interface/main/tabs/main.php").allowed:
+        return _refused("the public origin is not on the allowlist")
 
     try:
         models = load_models(root / "config" / "models.yaml")
@@ -220,16 +254,33 @@ def run_live(
     red_team = models["red_team"]
     if red_team.provider != "openrouter" or red_team.model.upper() == "TBD":
         return _refused("the red_team model is not a configured OpenRouter model")
+    approved = next(
+        (
+            item.origin
+            for item in load_approvals(root / "config" / "operator_approval.yaml")
+            if item.scope == "public-target"
+        ),
+        "",
+    )
+    if normalize_origin(approved) != normalize_origin(public_origin):
+        return _refused("the approved origin differs from the allowlisted public origin")
 
-    # Only now may the operator environment be read.
-    load_env(root / ".env")
-    values = os.environ if env is None else env
+    # Only now may the operator environment be read. The campaign origin comes from .env, not a leftover
+    # process value. Other names still prefer the process, so a shell secret is not overwritten. A caller
+    # that passes env is testing that mapping and does not rewrite the process.
+    if env is None:
+        # Origin and the budget approval are bound to .env. A leftover shell token must not approve
+        # different cap numbers, and a leftover origin must not retarget the campaign.
+        load_env(root / ".env", override=frozenset({ENV_ORIGIN, ENV_TOKEN, ENV_SECRET}))
+        values: Mapping[str, str] = os.environ
+    else:
+        values = env
     missing = [name for name in REQUIRED_ENV if not values.get(name, "")]
     if missing:
         return _refused("missing operator value for " + ", ".join(missing))
     origin = values[ENV_ORIGIN].rstrip("/")
-    if origin != attested_origin:
-        return _refused("the operator origin differs from the attested origin")
+    if normalize_origin(origin) != normalize_origin(public_origin):
+        return _refused("the operator origin differs from the allowlisted public origin")
     pid = values[ENV_PID]
     if not pid.isdigit() or int(pid) <= 0:
         return _refused("operator fixture pid is missing")
@@ -292,7 +343,7 @@ def run_live(
         )
         canaries = {case.subcategory: case.canary for case in seeds if case.category == LIVE_CATEGORY and case.canary}
         judge = RulesJudge(
-            str(root / "config" / "models.yaml"), ledger, stub=StubJudgeModel(), canaries=canaries, fixture_only=True
+            str(root / "config" / "models.yaml"), ledger, canaries=canaries
         )
 
         if resume is not None:

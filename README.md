@@ -73,9 +73,11 @@ only over HTTP. See [TARGET_FREEZE.md](Docs/TARGET_FREEZE.md).
 
 ## Deployed link
 
-**None. Open gap G-1 (hard gate H-1). Owner: the operator.** No public URL exists, and the target has only been
-tested at `127.0.0.1:8300`. Closeout steps are in the deployment note in [ARCHITECTURE.md](ARCHITECTURE.md). The
-Cloudflare quick tunnel question is Q2 in [DECISIONS.md](Docs/DECISIONS.md).
+**Not yet submitted.** The intended public target is the Project 2 Co-Pilot at `https://127.0.0.1:9300`, reached
+through a temporary Cloudflare quick tunnel. The hostname is not in the tracked allowlist. Copy
+`config/allowlist.local.example.yaml` to the gitignored `config/allowlist.local.yaml` and set `public_host` to the
+hostname from the current tunnel. A missing file adds no public host. The isolated stack on port 19300 is not the
+campaign target.
 
 ## Not verified live
 
@@ -147,17 +149,18 @@ python scripts/check_evals.py
 The committed code cannot run live. Only the operator can enable it, and only on their own machine. This section
 describes the gates and does not do any of it for you.
 
-1. Review and make a local edit to `config/allowlist.yaml` so it admits the target host. A change here is reviewed
-   like code.
+1. Copy `config/allowlist.local.example.yaml` to `config/allowlist.local.yaml` (gitignored) and set `public_host`
+   to the exact hostname from the current Cloudflare quick tunnel for `https://127.0.0.1:9300`. No wildcard, no
+   port 19300, and no edit to the tracked allowlist.
 2. Copy `.env.example` to `.env` (git-ignored) and fill in the operator-held values: the budget secret and token, the
    target origin, the fixture credentials, and the per-chat reserve. Never paste a key or password into chat or a
    tracked file.
 3. Copy `config/operator_approval.example.yaml` to `config/operator_approval.yaml` (git-ignored) and record a $5
    approval. This is an operator approval, not a provider-dashboard attestation, and it does not prove a provider
    limit exists.
-4. Set `LIVE_ENABLED` in `src/agentforge/safety/chokepoint.py` to `True` locally for a target run. Set
-   `PROVIDER_ENABLED` locally for a model call. Revert both before committing. Neither can be set from the
-   environment.
+4. Write the single word `live` into gitignored `config/live.local`. That is the only runtime opt-in, and it sets
+   both switches for that process. A missing file, or any other text, leaves both false. Do not edit the source
+   constants. `AGENTFORGE_LIVE_OPT_IN=live` in the process is the same token; any other value stays off.
 5. Run one script: `scripts/live_identity.py` (login-page check), `scripts/live_campaign.py` (graded cases),
    `scripts/live_agent.py` (one `SeedMutator` turn), `scripts/probe_models.py` or `scripts/live_judge.py` (provider
    calls). Each reserves in the shared ledger before it sends and refuses past the $5 ceiling.

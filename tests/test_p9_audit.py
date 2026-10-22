@@ -140,6 +140,27 @@ def test_phi_in_a_label_fails_closed() -> None:
         reconstruct(conn, "corr-1")
 
 
+def test_an_executor_journal_row_is_covered_by_the_harness_run_log() -> None:
+    """The executor is journaled as executor and logged as harness. That is not a missing run_logs row."""
+    conn = _conn()
+    p6_campaign(conn, "corr-1")
+    log_run(conn, "corr-1", "harness", "done")
+    conn.execute(
+        """
+        INSERT INTO dispatch_journal (
+            correlation_id, step_no, attempt, call_id, role, kind, intent_hash, state,
+            reserved_usd, incurred_usd, settlement, created_at, updated_at
+        ) VALUES (
+            'corr-1', 1, 1, 'executor-1', 'executor', 'target', ?, 'completed',
+            0, 0, 'settled', '2026-10-20T00:00:00Z', '2026-10-20T00:00:00Z'
+        )
+        """,
+        ("a" * 64,),
+    )
+    view = reconstruct(conn, "corr-1")
+    assert not any("executor-1" in gap["what"] for gap in view["gaps"])
+
+
 def test_a_rejection_for_another_call_does_not_satisfy_this_one() -> None:
     conn = _conn()
     p6_campaign(conn, "corr-1")

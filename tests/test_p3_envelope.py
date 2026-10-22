@@ -70,12 +70,33 @@ def test_env_flag_cannot_bypass_live_kill_switch(monkeypatch: pytest.MonkeyPatch
     monkeypatch.setenv("AGENTFORGE_LIVE", "1")
     monkeypatch.setenv("LIVE_ENABLED", "true")
     monkeypatch.setenv("AGENTFORGE_LIVE_ENABLED", "yes")
+    monkeypatch.setenv("AGENTFORGE_LIVE_OPT_IN", "true")
     spy = Spy()
     with pytest.raises(RefusedByChokepoint) as caught:
         call(spy, fake_transport=False)
     assert caught.value.gate == "live"
     assert spy.calls == []
     assert os.environ["AGENTFORGE_LIVE"] == "1"
+
+
+def test_exact_opt_in_token_enables_both_switches_and_anything_else_does_not(monkeypatch: pytest.MonkeyPatch) -> None:
+    from agentforge.safety.chokepoint import OPT_IN_ENV, apply_runtime_opt_in
+
+    monkeypatch.delenv(OPT_IN_ENV, raising=False)
+    assert apply_runtime_opt_in() is False
+    assert chokepoint.LIVE_ENABLED is False and chokepoint.PROVIDER_ENABLED is False
+    for value in ("", "true", "1", "yes", "LIVE"):
+        monkeypatch.setenv(OPT_IN_ENV, value)
+        assert apply_runtime_opt_in() is False
+        assert chokepoint.LIVE_ENABLED is False and chokepoint.PROVIDER_ENABLED is False
+    monkeypatch.setenv(OPT_IN_ENV, "live")
+    try:
+        assert apply_runtime_opt_in() is True
+        assert chokepoint.LIVE_ENABLED is True and chokepoint.PROVIDER_ENABLED is True
+    finally:
+        monkeypatch.delenv(OPT_IN_ENV)
+        apply_runtime_opt_in()
+    assert chokepoint.LIVE_ENABLED is False and chokepoint.PROVIDER_ENABLED is False
 
 
 def test_refusal_log_omits_cookie_csrf_and_body(tmp_path: Path) -> None:

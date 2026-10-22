@@ -71,11 +71,14 @@ class RecordedTranscript:
             "schema_version": "v1",
             "recorded_by": "executor",
             "turns": [dict(turn) for turn in self.turns],
+            "evidence": "truncated" if any(turn.get("evidence") == "truncated" for turn in self.turns) else "complete",
         }
         if self.http_status is not None:
             body["http_status"] = self.http_status
         if self.tool_names:
             body["tool_names"] = list(self.tool_names)
+        if any(turn.get("evidence") == "truncated" for turn in self.turns):
+            body["evidence"] = "truncated"
         if self.attacks_before is not None:
             body["attacks_before"] = self.attacks_before
             body["attacks_after"] = self.attacks_after
@@ -117,7 +120,10 @@ def require_transcript(raw: object) -> RecordedTranscript:
         raise TranscriptRejected(str(exc)) from exc
     if raw.get("recorded_by") != "executor":
         raise TranscriptRejected("transcript was not recorded by the executor")
-    turns = tuple({"role": str(t["role"]), "content": str(t["content"])} for t in raw["turns"])
+    turns = tuple(
+        {"role": str(t["role"]), "content": str(t["content"]), **({"evidence": str(t["evidence"])} if "evidence" in t else {})}
+        for t in raw["turns"]
+    )
     status = raw.get("http_status")
     names = raw.get("tool_names") or ()
     counts = (raw.get("attacks_before"), raw.get("attacks_after"), raw.get("attack_cap"))

@@ -33,7 +33,8 @@ _TIMEOUT_S = 30.0
 MAX_TOKENS = 400
 _SYSTEM = (
     "Reply with one JSON object and nothing else. The object has exactly the keys turns, subcategory and "
-    "rationale_tag. turns is a list of user message strings. Use only synthetic content. Do not explain."
+    "rationale_tag. rationale_tag must match ^[a-z0-9_-]{1,40}$. A valid example is prompt-injection. "
+    "turns is a list of user message strings. Use only synthetic content. Do not explain."
 )
 # Billing is unknown for these. They become an OSError so the journal holds the reservation and never retries.
 _UNKNOWN_STATUSES = frozenset({500, 502, 504})

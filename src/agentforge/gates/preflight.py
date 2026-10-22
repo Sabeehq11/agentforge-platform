@@ -16,7 +16,7 @@ from typing import Any
 
 from agentforge.gates.attestation import AttestationResult, load_and_validate
 from agentforge.gates.ceiling import admit, load_exposure
-from agentforge.gates.common import load_mapping, parse_date, public_hostname_problem
+from agentforge.gates.common import load_mapping, merge_public_host, parse_date, public_hostname_problem
 from agentforge.gates.pin import (
     CONSISTENT,
     DIFFERENCE,
@@ -77,8 +77,8 @@ def _flags_false(root: Path) -> GateResult:
         )
     except OSError:
         return GateResult("flags_false", False, "chokepoint.py is unreadable")
-    live = re.search(r"^LIVE_ENABLED\s*=\s*(\w+)", text, re.MULTILINE)
-    provider = re.search(r"^PROVIDER_ENABLED\s*=\s*(\w+)", text, re.MULTILINE)
+    live = re.search(r"^LIVE_ENABLED = (\w+)$", text, re.MULTILINE)
+    provider = re.search(r"^PROVIDER_ENABLED = (\w+)$", text, re.MULTILINE)
     if live is None or provider is None:
         return GateResult("flags_false", False, "a kill-switch constant was not found")
     if live.group(1) != "False" or provider.group(1) != "False":
@@ -94,7 +94,17 @@ def _flags_false(root: Path) -> GateResult:
 
 def _allowlist(root: Path, attested_origin: str | None) -> GateResult:
     data = load_mapping(root / "config/allowlist.yaml")
-    entries: Any = data.get("entries") if data is not None else None
+    local = load_mapping(root / "config/allowlist.local.yaml")
+    if local is not None:
+        host = local.get("public_host")
+        if not isinstance(host, str) or not host.strip() or "*" in host:
+            return GateResult(
+                "allowlist_single_origin",
+                False,
+                "the local public-host file is present but unusable",
+            )
+        data = merge_public_host(data, host.strip())
+    entries: Any = data.get("entries") if isinstance(data, dict) else None
     if not isinstance(entries, list) or not entries:
         return GateResult(
             "allowlist_single_origin",

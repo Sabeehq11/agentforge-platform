@@ -5,6 +5,10 @@ ConfirmedExploit, the transcript passed validate() and was recorded by the execu
 the campaign, the Judge's evidence points at that exact transcript, and the transcript holds a target turn (the
 target call completed). Not signals: a pass, any ErrorEnvelope, a refused or unknown-outcome call (no target turn)
 and a Red Team claim, which is not an input here at all. A finding counts once, by dedup key.
+
+A pass is stored separately in graded_transcripts so the fixture response and the deterministic label can be
+replayed. That row is not a finding, does not increment signal_count, and is refused when the transcript matches
+a PHI pattern.
 """
 
 from __future__ import annotations
@@ -32,6 +36,59 @@ def _verdict_of(judged: Any) -> str | None:
         return "fail" if judged.get("status") == "draft" else None
     outcome = judged.get("verdict")
     return str(outcome) if outcome in ("fail", "partial") else None
+
+
+def record_graded_transcript(
+    conn: sqlite3.Connection,
+    result: AttackResult,
+    judged: Any,
+    transcript_raw: object,
+) -> int | None:
+    """Store a deterministic pass, fail, or partial for replay. A pass is not a finding.
+
+    The transcript must be executor-recorded and PHI-clean. An error envelope, a missing target turn, and a
+    mismatched correlation are not stored. A repeated transcript id is ignored, so a resume cannot duplicate it.
+    """
+    from agentforge.safety.phi import PhiRefused, require_clean
+
+    if not isinstance(judged, dict) or "error_code" in judged or "exploit_id" in judged:
+        return None
+    outcome = judged.get("verdict")
+    if outcome not in ("pass", "fail", "partial"):
+        return None
+    try:
+        transcript = require_transcript(transcript_raw)
+    except TranscriptRejected:
+        return None
+    correlation_id = result["correlation_id"]
+    if transcript.correlation_id != judged.get("correlation_id") or transcript.correlation_id != correlation_id:
+        return None
+    reference = f"transcript:{transcript.transcript_id}"
+    if reference not in judged.get("evidence_refs", []):
+        return None
+    evidence = target_text(transcript)
+    if evidence is None:
+        return None
+    body = json.dumps(transcript.as_dict(), sort_keys=True)
+    try:
+        require_clean(body)
+    except PhiRefused:
+        return None
+    with conn:
+        cursor = conn.execute(
+            """
+            INSERT OR IGNORE INTO graded_transcripts (
+                correlation_id, transcript_id, subcategory, verdict, evidence_hash, transcript_json, recorded_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                correlation_id, transcript.transcript_id, result["subcategory"], outcome,
+                sha256_hex(normalize(evidence)), body, now_iso(),
+            ),
+        )
+    if cursor.rowcount == 0:
+        return None
+    return int(cursor.lastrowid or 0)
 
 
 def record_signal(

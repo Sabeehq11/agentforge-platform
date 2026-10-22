@@ -24,6 +24,23 @@ def test_shipped_config_allows_only_the_reviewed_host() -> None:
     assert not denied.allowed
 
 
+def test_local_overlay_adds_one_exact_public_host(tmp_path: Path) -> None:
+    reviewed = tmp_path / "allowlist.yaml"
+    reviewed.write_text((ROOT / "config" / "allowlist.yaml").read_text(encoding="utf-8"), encoding="utf-8")
+    local = tmp_path / "allowlist.local.yaml"
+    local.write_text("public_host: this-tunnel.trycloudflare.com\n", encoding="utf-8")
+    allowed = Allowlist.from_file(reviewed, local=local)
+    assert allowed.check("https://this-tunnel.trycloudflare.com/interface/login/login.php").allowed
+    assert allowed.check("https://this-tunnel.trycloudflare.com/library/ajax/set_pt.php").allowed
+    assert not allowed.check("https://this-tunnel.trycloudflare.com/").allowed
+    assert not allowed.check("https://other.trycloudflare.com/interface/login/login.php").allowed
+    assert Allowlist.from_file(reviewed, local=tmp_path / "missing.yaml").entries == (
+        Entry("http", "127.0.0.1", 8300, "/"),
+    )
+    local.write_text("public_host: '*.trycloudflare.com'\n", encoding="utf-8")
+    assert not Allowlist.from_file(reviewed, local=local).check("https://this-tunnel.trycloudflare.com/interface").allowed
+
+
 def test_missing_file_denies(tmp_path: Path) -> None:
     assert not Allowlist.from_file(tmp_path / "nope.yaml").check("https://target.example/app").allowed
 

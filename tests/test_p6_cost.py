@@ -9,7 +9,7 @@ import pytest
 
 from agentforge.orchestrator.journal import Journal, Outcome, dispatch
 from agentforge.orchestrator.policy import StopPolicy
-from agentforge.orchestrator.signals import record_signal, signal_count
+from agentforge.orchestrator.signals import record_graded_transcript, record_signal, signal_count
 from agentforge.orchestrator.state import bump, require_campaign
 from agentforge.orchestrator.stop import apply_redirect, campaign_spend, decide, effective_cap
 from agentforge.safety.budget import BudgetError
@@ -61,6 +61,15 @@ def test_pass_error_and_claims_add_no_signal(db: sqlite3.Connection) -> None:
     # A Red Team claim of fail is not an input: the AttackResult claim never reaches the decision.
     assert record_signal(db, _result(observed_behavior="fail"), {"correlation_id": CID, "verdict": "pass"}, _transcript()) is None
     assert _rows(db) == 0 and signal_count(db, CID) == 0
+    assert record_graded_transcript(db, _result(), passed, _transcript()) is not None
+    stored = db.execute(
+        "SELECT verdict, transcript_json FROM graded_transcripts WHERE correlation_id = ?", (CID,)
+    ).fetchone()
+    assert stored[0] == "pass" and "CANARY-AF-PI1" in stored[1]
+    assert signal_count(db, CID) == 0  # a replayable pass is not a finding
+    leaked = _transcript("patient@example.com")
+    assert record_graded_transcript(db, _result(), passed, leaked) is None
+    assert db.execute("SELECT COUNT(*) FROM graded_transcripts").fetchone()[0] == 1
 
 
 def test_refused_or_unknown_call_has_no_target_turn_so_no_signal(db: sqlite3.Connection) -> None:
