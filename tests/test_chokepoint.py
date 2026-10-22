@@ -9,6 +9,7 @@ from agentforge.safety import chokepoint
 from agentforge.safety.allowlist import Allowlist, Entry
 from agentforge.safety.budget import Budget, Caps, approval_token
 from agentforge.safety.chokepoint import RefusedByChokepoint, Response, request
+from agentforge.safety.operator_approval import OperatorApproval
 from agentforge.safety.spend_limits import Attestation
 
 SECRET = "test-secret-not-a-real-credential"
@@ -39,6 +40,8 @@ def allow() -> Allowlist:
 
 
 def call(spy: Spy, **over: object) -> Response:
+    from agentforge.safety.operator_approval import OperatorApproval
+
     kw: dict[str, object] = dict(
         transport=spy,
         allowlist=allow(),
@@ -48,9 +51,57 @@ def call(spy: Spy, **over: object) -> Response:
         est_cost_usd=0.05,
         today=TODAY,
         fake_transport=True,
+        approvals=[OperatorApproval("op", TODAY, "public-target", 0.0, "fixture", "https://target.example")],
     )
     kw.update(over)
     return request("GET", URL, **kw)  # type: ignore[arg-type]
+
+
+def _public(origin: str, **over: object) -> dict[str, object]:
+    from agentforge.safety.operator_approval import OperatorApproval
+
+    approval = OperatorApproval("op", TODAY, "public-target", 0.0, "one window", origin)
+    values: dict[str, object] = {"approvals": [approval]}
+    values.update(over)
+    return values
+
+
+def test_a_zero_cost_public_request_needs_an_origin_bound_approval() -> None:
+    spy = Spy()
+    public = Allowlist((Entry("https", "target.example", 443, "/app"), Entry("http", "127.0.0.1", 8300, "/")))
+    with pytest.raises(RefusedByChokepoint) as missing:
+        call(spy, allowlist=public, est_cost_usd=0.0, approvals=[])
+    assert missing.value.gate == "operator_approval" and spy.calls == []
+    with pytest.raises(RefusedByChokepoint):
+        call(spy, allowlist=public, est_cost_usd=0.0, **_public("https://other.example"))
+    assert spy.calls == []
+    assert call(spy, allowlist=public, est_cost_usd=0.0, **_public("https://target.example")).status == 200
+    local = Spy()
+    assert request(
+        "GET", "http://127.0.0.1:8300/app",
+        transport=local, allowlist=public, budget=good_budget(), attestations=ATT, provider="target",
+        est_cost_usd=0.0, today=TODAY, fake_transport=True,
+    ).status == 200
+    assert local.calls == [("GET", "http://127.0.0.1:8300/app")]
+
+
+def test_a_non_default_port_needs_its_own_public_approval() -> None:
+    spy = Spy()
+    listed = Allowlist((Entry("https", "target.example", 8443, "/"),))
+    with pytest.raises(RefusedByChokepoint) as caught:
+        request(
+            "GET", "https://target.example:8443/app",
+            transport=spy, allowlist=listed, budget=good_budget(), attestations=ATT, provider="target",
+            est_cost_usd=0.0, today=TODAY, fake_transport=True,
+            approvals=_public("https://target.example")["approvals"],  # type: ignore[arg-type]
+        )
+    assert caught.value.gate == "operator_approval" and spy.calls == []
+    assert request(
+        "GET", "https://target.example:8443/app",
+        transport=spy, allowlist=listed, budget=good_budget(), attestations=ATT, provider="target",
+        est_cost_usd=0.0, today=TODAY, fake_transport=True,
+        approvals=_public("https://target.example:8443")["approvals"],  # type: ignore[arg-type]
+    ).status == 200
 
 
 def test_live_is_disabled_in_p0() -> None:
@@ -172,11 +223,12 @@ def test_headers_and_body_reach_the_transport_only_after_the_gates() -> None:
         allowlist=allow(),
         budget=good_budget(),
         attestations=ATT,
-        provider="target",
-        est_cost_usd=0.05,
-        today=TODAY,
-        fake_transport=True,
-        headers={"X-CSRF-Token": "not-logged"},
+            provider="target",
+            est_cost_usd=0.05,
+            today=TODAY,
+            fake_transport=True,
+            approvals=[OperatorApproval("op", TODAY, "public-target", 0.0, "fixture", "https://target.example")],
+            headers={"X-CSRF-Token": "not-logged"},
         body=b'{"question":"synthetic"}',
     ).status == 200
     assert seen == [({"X-CSRF-Token": "not-logged"}, b'{"question":"synthetic"}')]

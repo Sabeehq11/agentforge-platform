@@ -334,6 +334,7 @@ def _offline_client(ledger: Ledger, clock: Clock) -> Any:
     from agentforge.evals.session import SessionClient
     from agentforge.safety.allowlist import Allowlist, Entry
     from agentforge.safety.chokepoint import Response
+    from agentforge.safety.operator_approval import OperatorApproval
     from agentforge.safety.rate import RateCap
     from agentforge.safety.spend_limits import Attestation
 
@@ -372,6 +373,7 @@ def _offline_client(ledger: Ledger, clock: Clock) -> Any:
         allowlist=Allowlist((Entry("https", "target.example", 443, "/"),)),
         budget=ledger._budget,  # noqa: SLF001 — the session and the ledger share one run budget
         attestations=[Attestation("target", "baseline", 10.0, "baseline", date(2026, 10, 17))],
+        approvals=[OperatorApproval("baseline", date(2026, 10, 20), "public-target", 0.0, "offline baseline", "https://target.example")],
         provider="target",
         today=date(2026, 10, 20),
         rate_cap=RateCap(20_000),

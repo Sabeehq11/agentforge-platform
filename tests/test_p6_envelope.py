@@ -9,6 +9,7 @@ from pathlib import Path
 from agentforge.safety.chokepoint import LIVE_ENABLED, PROVIDER_ENABLED, RefusedByChokepoint, request
 from agentforge.safety.allowlist import Allowlist, Entry
 from agentforge.safety.budget import Budget, Caps, approval_token
+from agentforge.safety.operator_approval import OperatorApproval
 from agentforge.safety.rate import RateCap
 from agentforge.safety.spend_limits import Attestation
 from datetime import date
@@ -38,6 +39,7 @@ def test_both_switches_off_still_refuses_before_the_transport() -> None:
             allowlist=Allowlist((Entry("https", "target.example", 443, "/"),)), budget=budget,
             attestations=[Attestation("target", "k", 1.0, "someone", date(2026, 10, 17))], provider="target",
             est_cost_usd=0.0, today=date(2026, 10, 20), rate_cap=RateCap(2),
+            approvals=[OperatorApproval("op", date(2026, 10, 20), "public-target", 0.0, "fixture", "https://target.example")],
         )
     except RefusedByChokepoint as exc:
         assert exc.gate == "live"

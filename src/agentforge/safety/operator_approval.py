@@ -12,11 +12,12 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from urllib.parse import urlsplit
 
 from agentforge.safety.spend_limits import Attestation, SpendLimitNotAttested, require_attested
 
 APPROVED_USD = 5.0
-SCOPES = frozenset({"local-target", "openrouter"})
+SCOPES = frozenset({"local-target", "openrouter", "public-target"})
 _SCOPE_PROVIDER = {"local-target": "target", "openrouter": "openrouter"}
 
 
@@ -31,6 +32,7 @@ class OperatorApproval:
     scope: str
     max_usd: float
     purpose: str
+    origin: str = ""
 
 
 def load_approvals(path: str | Path) -> list[OperatorApproval]:
@@ -57,6 +59,7 @@ def load_approvals(path: str | Path) -> list[OperatorApproval]:
                     scope=scope,
                     max_usd=float(raw["max_usd"]),
                     purpose=str(raw["purpose"]).strip(),
+                    origin=str(raw.get("origin", "")).strip().rstrip("/"),
                 )
             )
         except (KeyError, TypeError, ValueError):
@@ -83,6 +86,37 @@ def require_operator_approval(
         if timedelta(0) <= age <= timedelta(days=max_age_days):
             return item
     raise OperatorApprovalRefused(f"no fresh operator approval for {scope!r}")
+
+
+def _public_origin(value: str) -> str | None:
+    """scheme, hostname, and port. An omitted port is the scheme default, so a non-default port cannot match it."""
+    parts = urlsplit(value.strip())
+    if parts.scheme not in {"http", "https"} or not parts.hostname:
+        return None
+    port = parts.port if parts.port is not None else (443 if parts.scheme == "https" else 80)
+    host = f"[{parts.hostname}]" if ":" in parts.hostname else parts.hostname
+    return f"{parts.scheme}://{host}:{port}"
+
+
+def require_public_target(
+    approvals: list[OperatorApproval],
+    *,
+    origin: str,
+    today: date,
+) -> OperatorApproval:
+    """A same-day authorization bound to this exact scheme, hostname, and port. Not a spend ceiling."""
+    wanted = _public_origin(origin)
+    if wanted is None:
+        raise OperatorApprovalRefused("public-target approval requires an origin")
+    for item in approvals:
+        if item.scope != "public-target" or not item.approved_by or not item.purpose:
+            continue
+        if item.max_usd != 0 or _public_origin(item.origin) != wanted:
+            continue
+        age = today - item.approved_on
+        if timedelta(0) <= age <= timedelta(days=1):
+            return item
+    raise OperatorApprovalRefused(f"no fresh public-target approval for {wanted!r}")
 
 
 def authorize_spend(

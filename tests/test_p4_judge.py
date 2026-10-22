@@ -248,7 +248,7 @@ def test_ambiguous_case_uses_openrouter_and_a_rule_does_not(monkeypatch: pytest.
     assert "runtime-judge-key" not in json.dumps(judged)
 
 
-def test_provider_timeout_in_rules_judge_releases_reservation(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_provider_timeout_in_rules_judge_holds_reservation(monkeypatch: pytest.MonkeyPatch) -> None:
     from agentforge.agents.openrouter import OpenRouterJudgeModel
 
     def timed_out(method: str, url: str, headers: dict[str, str] | None = None, body: bytes | str | None = None, timeout: float = 0) -> object:
@@ -259,8 +259,8 @@ def test_provider_timeout_in_rules_judge_releases_reservation(monkeypatch: pytes
     _conn, ledger = _ledger()
     judge = _judge(ledger=ledger, stub=OpenRouterJudgeModel("m/x", transport=timed_out), reserve_usd=0.01)
     outcome = judge.judge_transcript(_result(subcategory="TM-SC-1"), _transcript("workflow only", transcript_id="rec-timeout"))
-    assert outcome["error_code"] == "judge_timeout"
-    assert ledger.totals("judge").reserved_usd == 0
+    assert outcome["error_code"] == "judge_timeout" and outcome["retryable"] is True
+    assert ledger.totals("judge").reserved_usd == pytest.approx(0.01)
     assert ledger.totals("judge").incurred_usd == 0
 
 
@@ -589,7 +589,6 @@ def test_openrouter_judge_uses_configured_model_and_never_logs_the_key(monkeypat
 
 
 def test_openrouter_judge_refuses_live_and_maps_errors(monkeypatch: pytest.MonkeyPatch) -> None:
-    from agentforge.agents.judge import JudgeTimeoutError
     from agentforge.agents.openrouter import OpenRouterError, OpenRouterJudgeModel
 
     monkeypatch.setenv("OPENROUTER_API_KEY", "runtime-key")
@@ -616,7 +615,9 @@ def test_openrouter_judge_refuses_live_and_maps_errors(monkeypatch: pytest.Monke
     def timed_out(method: str, url: str, headers: dict[str, str] | None = None, body: bytes | str | None = None, timeout: float = 0) -> object:
         raise TimeoutError("timed out")
 
-    with pytest.raises(JudgeTimeoutError):
+    from agentforge.agents.openrouter import ProviderOutcomeUnknown
+
+    with pytest.raises(ProviderOutcomeUnknown):
         OpenRouterJudgeModel("m/x", transport=timed_out).complete("transcript-1")
 
 
@@ -781,6 +782,26 @@ def test_probe_refuses_before_request_without_approval_or_attestation(monkeypatc
     assert LIVE_ENABLED is False
 
 
+def test_a_judge_429_releases_and_an_unknown_outcome_holds(monkeypatch: pytest.MonkeyPatch) -> None:
+    from agentforge.agents.openrouter import OpenRouterJudgeModel
+    from agentforge.safety.chokepoint import Response
+
+    calls = {"n": 0}
+
+    def transport(method: str, url: str, headers: object = None, body: object = None, timeout: float = 0.0) -> Response:
+        calls["n"] += 1
+        return Response(429, b"")
+
+    monkeypatch.setenv("OPENROUTER_API_KEY", "canary-not-a-real-key")
+    conn, ledger = _ledger()
+    judge = _judge(ledger=ledger, stub=OpenRouterJudgeModel("m/x", transport=transport), reserve_usd=0.01)
+    outcome = judge.judge_transcript(_result(subcategory="TM-SC-1"), _transcript("workflow only", transcript_id="rec-429"))
+    assert outcome["error_code"] == "no_findings_in_window"
+    assert ledger.totals("judge").reserved_usd == 0 and ledger.totals("judge").incurred_usd == 0
+    assert conn.execute("SELECT state FROM agent_spend").fetchone()[0] == "released"
+    assert calls["n"] == 1
+
+
 def test_attestations_do_not_cross_providers() -> None:
     from agentforge.safety.spend_limits import SpendLimitNotAttested, require_attested
 
@@ -823,7 +844,7 @@ def test_provider_scoring_does_not_call_for_a_decisive_rule(monkeypatch: pytest.
     assert BASELINE.read_text(encoding="utf-8") == (ROOT / "evals" / "judge" / "baseline.json").read_text(encoding="utf-8")
 
 
-def test_provider_timeout_releases_the_scoring_reservation(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_provider_timeout_holds_the_scoring_reservation(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     from agentforge.agents.probe import score_provider_judge
 
     def timed_out(method: str, url: str, headers: dict[str, str] | None = None, body: bytes | str | None = None, timeout: float = 0) -> object:
@@ -842,8 +863,8 @@ def test_provider_timeout_releases_the_scoring_reservation(monkeypatch: pytest.M
         transport=timed_out,
     )
     assert report["status"] == "stopped"
-    assert "JudgeTimeoutError" in str(report["error"])
-    assert budget.run_spent == pytest.approx(0.0)
+    assert report["failure_kind"] == "unknown"
+    assert budget.run_spent == pytest.approx(0.01)
 
 
 def test_provider_switch_cannot_authorize_a_target_request(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -967,6 +988,29 @@ def test_probe_records_cost_of_an_invalid_label_without_double_counting(monkeypa
     from agentforge.safety.ledger import committed_usd
 
     assert committed_usd(conn) == pytest.approx(0.004)
+
+
+def test_a_probe_timeout_holds_the_reservation_and_is_not_replayed(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    from agentforge.agents.probe import run_probe
+    from agentforge.safety.ledger import committed_usd
+
+    calls = {"n": 0}
+
+    def timed_out(method: str, url: str, headers: object = None, body: object = None, timeout: float = 0.0) -> object:
+        calls["n"] += 1
+        raise TimeoutError("timed out")
+
+    monkeypatch.setenv("OPENROUTER_API_KEY", "runtime-probe-key")
+    conn, ledger = _ledger()
+    report = run_probe(
+        ledger._budget, LABELED, BASELINE, reserve_usd=0.01, attestations=ATT, today=TODAY,
+        report_dir=tmp_path, judge=_judge(), transport=timed_out, ledger=ledger,
+    )
+    assert report["status"] == "stopped"
+    assert report["measurements"][0]["outcome"] == "unknown"  # type: ignore[index]
+    assert committed_usd(conn) == pytest.approx(0.01)
+    assert conn.execute("SELECT state FROM agent_spend").fetchone()[0] == "reserved"
+    assert calls["n"] == 1
 
 
 def test_probe_http_failure_is_labelled_and_releases_with_no_cost(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

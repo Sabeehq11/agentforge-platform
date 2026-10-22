@@ -24,6 +24,7 @@ from agentforge.evals.session import (
 from agentforge.safety.allowlist import Allowlist
 from agentforge.safety.chokepoint import RefusedByChokepoint
 from agentforge.safety.identity import LOGIN_PATH
+from agentforge.safety.operator_approval import OperatorApproval
 from agentforge.safety.rate import RateCap
 from agentforge.safety.spend_limits import Attestation
 
@@ -77,6 +78,7 @@ def _client(target: FakeTarget, allow: Allowlist) -> SessionClient:
         today=TODAY,
         rate_cap=RateCap(60),
         fake_transport=True,
+        approvals=[OperatorApproval("op", TODAY, "public-target", 0.0, "fixture", ORIGIN)],
     )
     client.accept_authenticated_stub_guard()
     return client

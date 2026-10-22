@@ -231,7 +231,7 @@ def live_root(tmp_path: Path) -> Path:
         {"approved_by": "x", "approved_on": TODAY.isoformat(), "scope": scope, "max_usd": 5, "purpose": "r9 test"}
         for scope in ("local-target", "openrouter")
     ]
-    approvals.append({"approved_by": "x", "approved_on": TODAY.isoformat(), "scope": "public-target", "max_usd": 0, "purpose": "synthetic"})
+    approvals.append({"approved_by": "x", "approved_on": TODAY.isoformat(), "scope": "public-target", "max_usd": 0, "purpose": "synthetic", "origin": ORIGIN})
     (root / "config" / "operator_approval.yaml").write_text(yaml.safe_dump({"approvals": approvals}), encoding="utf-8")
     return root
 

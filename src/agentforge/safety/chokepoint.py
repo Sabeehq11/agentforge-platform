@@ -15,12 +15,13 @@ import os
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date
+from urllib.parse import urlsplit
 
 from .allowlist import Allowlist
 from .budget import Budget
 from .rate import RateCap, RateCapExceeded
 from .refusal_log import RefusalLog
-from .operator_approval import OperatorApproval, authorize_spend
+from .operator_approval import OperatorApproval, OperatorApprovalRefused, authorize_spend, require_public_target
 from .spend_limits import Attestation
 
 # Authoritative kill switch. Reviewed source change required to enable a live transport. Not an env flag.
@@ -96,6 +97,15 @@ def request(
     decision = allowlist.check(url)
     if not decision.allowed:
         raise refuse("allowlist", decision.reason)
+
+    # A public host needs a same-day approval bound to its origin, even when the request cannot bill. Checked
+    # before any reservation so a refusal leaves the budget untouched. Localhost is the isolated-target path.
+    parts = urlsplit(url)
+    if parts.hostname not in {"127.0.0.1", "localhost", "::1"}:
+        try:
+            require_public_target(approvals or [], origin=url, today=today)
+        except OperatorApprovalRefused as exc:
+            raise refuse("operator_approval", str(exc)) from exc
 
     try:
         budget.reserve(est_cost_usd, attack=attack)

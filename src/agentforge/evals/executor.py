@@ -36,6 +36,7 @@ from agentforge.safety.budget import Budget, BudgetError
 from agentforge.safety.chokepoint import LIVE_ENABLED, TARGET_PROVIDER, RefusedByChokepoint, Response, Transport, request
 from agentforge.safety.identity import IdentityMismatch
 from agentforge.safety.phi import PhiRefused, require_clean
+from agentforge.safety.operator_approval import OperatorApproval
 from agentforge.safety.rate import RateCap
 from agentforge.safety.refusal_log import RefusalLog
 from agentforge.safety.spend_limits import Attestation
@@ -258,6 +259,14 @@ def run_session_case(
         )
     if not LIVE_ENABLED and not client.fake_transport:
         return _result(case, "not_run", "LIVE_ENABLED is false; env flags cannot start a live call")
+    # The client ledger releases a reservation at $0 when the transport fails after dispatch. That understates
+    # spend, so a billable chat on that path is refused before login, identity, or any other request.
+    if client.ledger is not None and client.chat_reserve_usd is not None and client.chat_reserve_usd > 0:
+        return _result(
+            case,
+            "not_run",
+            "the client-ledger path cannot account for an unknown post-dispatch outcome; chat was not sent",
+        )
     try:
         before = len(client.session.calls)
         client.verify_identity()
@@ -355,6 +364,7 @@ def run_live_case(
     rate_cap: RateCap,
     refusal_log: RefusalLog | None = None,
     fake_transport: bool = False,
+    approvals: list[OperatorApproval] | None = None,
 ) -> CaseResult:
     """One case through the chokepoint. A refusal is not_run. A transport error after the gates is error."""
     if case.grader == "attack_count":
@@ -377,6 +387,7 @@ def run_live_case(
             fake_transport=fake_transport,
             rate_cap=rate_cap,
             refusal_log=refusal_log,
+            approvals=approvals,
         )
     except RefusedByChokepoint as exc:
         return _result(case, "not_run", f"refused by {exc.gate}")

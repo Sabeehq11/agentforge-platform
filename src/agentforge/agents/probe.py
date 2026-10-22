@@ -14,6 +14,7 @@ from typing import Any
 from uuid import uuid4
 
 from agentforge.agents.judge import JudgeTimeoutError, RulesJudge
+from agentforge.agents.openrouter import ProviderOutcomeUnknown
 from agentforge.contracts.messages import AttackResult
 from agentforge.agents.judge_metrics import Rates, assert_no_drift, drift, load_baseline, load_labeled, score
 from agentforge.agents.openrouter import (
@@ -213,6 +214,10 @@ def run_probe(
             held.client = client
             try:
                 text = client.complete(_PROBE_PROMPT if role == "red_team" else _JUDGE_PROBE_PROMPT)
+            except ProviderOutcomeUnknown as exc:
+                held.settled = True
+                measurements.append(ProbeMeasurement(role, model, family, "unknown", None))
+                return _save(report_dir, _report(measurements, exc, None, load_baseline(baseline), calls))
             except (OpenRouterError, JudgeTimeoutError, RefusedByChokepoint) as exc:
                 held.settle(client.last_cost_usd)
                 measurements.append(ProbeMeasurement(role, model, family, _failure_outcome(exc), client.last_cost_usd))
@@ -304,6 +309,9 @@ def score_provider_judge(
             held.client = client
             try:
                 label = client.complete(_item_text(item))
+            except ProviderOutcomeUnknown as exc:
+                held.settled = True
+                return _save_drift(path, _drift_body(model, pairs, exc, calls, outcome="unknown"))
             except (OpenRouterError, JudgeTimeoutError, RefusedByChokepoint) as exc:
                 held.settle(client.last_cost_usd)
                 return _save_drift(path, _drift_body(model, pairs, exc, calls, outcome=_failure_outcome(exc)))

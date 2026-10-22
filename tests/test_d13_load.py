@@ -43,6 +43,7 @@ from agentforge.safety.allowlist import Allowlist, Entry
 from agentforge.safety.budget import Budget, Caps, approval_token
 from agentforge.safety.budget import load_caps
 from agentforge.safety.chokepoint import LIVE_ENABLED, PROVIDER_ENABLED
+from agentforge.safety.operator_approval import OperatorApproval
 from agentforge.safety.rate import RateCap
 from agentforge.safety.spend_limits import Attestation
 from agentforge.store.migrate import migrate
@@ -148,6 +149,7 @@ def _client(target: FakeTarget, budget: Budget, *, rate: int, reserve: float | N
         rate_cap=RateCap(rate),
         chat_reserve_usd=reserve,
         fake_transport=True,
+        approvals=[OperatorApproval("op", TODAY, "public-target", 0.0, "fixture", "https://target.example")],
         fixture_username="copilot_doc_a",
         fixture_password="not-a-secret",
     )

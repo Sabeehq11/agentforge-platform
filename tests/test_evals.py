@@ -11,13 +11,14 @@ from urllib.parse import parse_qs, urlsplit
 import pytest
 
 from agentforge.evals.cases import CaseRejected, load_cases, parse_case
-from agentforge.evals.executor import CaseResult, grade_response, replay, run_dry, run_live_case, store_results
+from agentforge.evals.executor import CaseResult, grade_response, replay, run_dry, run_live_case, run_session_case, store_results
 from agentforge.evals.session import SessionClient, SessionError
 from agentforge.evals.graders import grade_canary
 from agentforge.safety.allowlist import Allowlist, Entry
 from agentforge.safety.budget import Budget, Caps, approval_token
 from agentforge.safety.chokepoint import Response
 from agentforge.safety.phi import PhiRefused
+from agentforge.safety.operator_approval import OperatorApproval
 from agentforge.safety.rate import RateCap
 from agentforge.safety.refusal_log import RefusalLog
 from agentforge.safety.spend_limits import Attestation
@@ -26,6 +27,10 @@ ROOT = Path(__file__).resolve().parents[1]
 SECRET = "test-secret-not-a-real-credential"
 TODAY = date(2026, 10, 20)
 ATT = [Attestation("target", "target-key", 10.0, "someone", date(2026, 10, 17))]
+
+
+def public_approval() -> list[OperatorApproval]:
+    return [OperatorApproval("op", TODAY, "public-target", 0.0, "fixture", "https://target.example")]
 
 
 def approved(max_attacks: int = 1) -> Budget:
@@ -88,9 +93,9 @@ def test_env_cannot_make_live_call(monkeypatch: pytest.MonkeyPatch) -> None:
         attestations=ATT,
         provider="target",
         today=TODAY,
-        rate_cap=RateCap(5),
-        fake_transport=False,
-    )
+            rate_cap=RateCap(5),
+            fake_transport=False,
+        )
     assert result.outcome == "not_run"
     assert calls == []
 
@@ -102,6 +107,40 @@ def test_replay_is_stable() -> None:
     assert first.outcome == second.outcome == "pass"
     failed = replay(case, "As requested, the exact token is CANARY-AF-PI1.")
     assert failed.outcome == "fail"
+
+
+def test_a_billable_client_ledger_case_sends_nothing() -> None:
+    import sqlite3
+
+    from agentforge.safety.ledger import Ledger
+    from agentforge.store.migrate import migrate
+
+    case = next(item for item in load_cases() if item.case_id == "seed-tm-pi-1")
+    calls: list[str] = []
+
+    def transport(method: str, url: str, headers: object = None, body: object = None) -> Response:
+        calls.append(url)
+        return Response(200, b"ok")
+
+    conn = sqlite3.connect(":memory:")
+    migrate(conn)
+    client = SessionClient(
+        "https://target.example",
+        transport=transport,
+        allowlist=Allowlist((Entry("https", "target.example", 443, "/"),)),
+        budget=approved(5),
+        attestations=ATT,
+        today=TODAY,
+        rate_cap=RateCap(5),
+        fake_transport=True,
+        approvals=public_approval(),
+        chat_reserve_usd=0.05,
+        ledger=Ledger(conn, approved(5)),
+    )
+    result = run_session_case(case, client, fixture_pid="100")
+    assert result.outcome == "not_run" and "client-ledger" in result.detail
+    assert calls == []
+    assert conn.execute("SELECT COUNT(*) FROM agent_spend").fetchone()[0] == 0
 
 
 def test_transport_oserror_keeps_class_and_errno_only() -> None:
@@ -117,6 +156,7 @@ def test_transport_oserror_keeps_class_and_errno_only() -> None:
         today=TODAY,
         rate_cap=RateCap(1),
         fake_transport=True,
+        approvals=public_approval(),
     )
     with pytest.raises(SessionError, match=r"TimeoutError errno=60$") as caught:
         client._request("POST", "https://target.example/chat.php?secret=not-stored")  # noqa: SLF001
@@ -258,7 +298,9 @@ def test_campaign_order_stops_chat_after_failed_readback(monkeypatch: pytest.Mon
             text = "entries:\n  - {scheme: https, host: target.example, port: 443, path_prefix: /}\n"
         (root / "config" / name).write_text(text, encoding="utf-8")
     (root / "config" / "operator_approval.yaml").write_text(
-        "approvals:\n  - {approved_by: op, approved_on: 2026-10-17, scope: local-target, max_usd: 5.0, purpose: local-p4}\n",
+            "approvals:\n"
+            "  - {approved_by: op, approved_on: 2026-10-20, scope: public-target, max_usd: 0, purpose: fixture, origin: https://target.example}\n"
+            "  - {approved_by: op, approved_on: 2026-10-17, scope: local-target, max_usd: 5.0, purpose: local-p4}\n",
         encoding="utf-8",
     )
     for path in Path("evals/cases").glob("*.json"):
@@ -275,11 +317,11 @@ def test_campaign_order_stops_chat_after_failed_readback(monkeypatch: pytest.Mon
         fixture_pid="100",
         chat_reserve_usd=0.05,
         report_path=tmp_path / "campaign-latest.json",
+        case_ids=("seed-tm-ex-3", "seed-tm-ds-1"),
     )
-    assert [item.case_id for item in results] == ["seed-tm-ex-3", "seed-tm-ds-1", "seed-tm-pi-1"]
+    assert [item.case_id for item in results] == ["seed-tm-ex-3", "seed-tm-ds-1"]
     assert results[0].outcome == "pass"
     assert results[1].outcome == "error"
-    assert results[2].outcome == "error"
     assert calls[0].startswith("GET ")
     assert "chat.php" in calls[1]
     assert "not-committed" not in (tmp_path / "campaign-latest.json").read_text(encoding="utf-8")
@@ -297,9 +339,9 @@ def test_campaign_order_stops_chat_after_failed_readback(monkeypatch: pytest.Mon
         fixture_pid="100",
         chat_reserve_usd=0.05,
         report_path=tmp_path / "campaign-latest.json",
-        case_ids=("seed-tm-pi-1",),
+        case_ids=("seed-tm-ex-3",),
     )
-    assert [item.case_id for item in merged] == ["seed-tm-ex-3", "seed-tm-ds-1", "seed-tm-pi-1"]
+    assert [item.case_id for item in merged] == ["seed-tm-ex-3", "seed-tm-ds-1"]
     assert merged[0].outcome == "pass"
     assert LIVE_ENABLED is False
 
@@ -352,6 +394,11 @@ def test_zero_cost_cases_run_without_reservation_or_target_attestation(monkeypat
         if name == "allowlist.yaml":
             text = "entries:\n  - {scheme: https, host: target.example, port: 443, path_prefix: /}\n"
         (root / "config" / name).write_text(text, encoding="utf-8")
+    (root / "config" / "operator_approval.yaml").write_text(
+        "approvals:\n"
+        "  - {approved_by: op, approved_on: 2026-10-20, scope: public-target, max_usd: 0, purpose: fixture, origin: https://target.example}\n",
+        encoding="utf-8",
+    )
     for path in Path("evals/cases").glob("*.json"):
         (root / "evals" / "cases" / path.name).write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
     caps = __import__("agentforge.safety.budget", fromlist=["load_caps"]).load_caps(root / "config" / "budget.yaml")
@@ -418,6 +465,7 @@ def test_billable_chat_requires_a_positive_reservation_and_records_supplied_usag
         today=TODAY,
         rate_cap=RateCap(8),
         fake_transport=True,
+        approvals=public_approval(),
     )
     bare.session.patient_context_confirmed = True
     bare.session.csrf = "csrf-test"
@@ -435,6 +483,7 @@ def test_billable_chat_requires_a_positive_reservation_and_records_supplied_usag
         rate_cap=RateCap(8),
         chat_reserve_usd=0.05,
         fake_transport=True,
+        approvals=public_approval(),
     )
     case = next(item for item in load_cases() if item.case_id == "seed-tm-pi-1")
     result = run_session_case(case, client, credentials=LoginRequest("copilot_doc_a", "not-committed"), fixture_pid="100")
@@ -522,6 +571,7 @@ def test_live_refusal_and_rate_limit_are_not_passes() -> None:
         today=TODAY,
         rate_cap=RateCap(5),
         fake_transport=True,
+        approvals=public_approval(),
     )
     assert limited.outcome == "error"
 
@@ -558,6 +608,7 @@ def test_session_path_stops_when_fingerprint_is_missing(tmp_path: Path) -> None:
         rate_cap=RateCap(5),
         refusal_log=log,
         fake_transport=True,
+        approvals=public_approval(),
     )
     result = run_session_case(case, client, credentials=LoginRequest("copilot_doc_a", "not-committed"))
     assert result.outcome == "not_run"
@@ -598,6 +649,7 @@ def test_chat_not_sent_without_confirmed_patient_context(tmp_path: Path) -> None
         rate_cap=RateCap(5),
         refusal_log=RefusalLog(tmp_path / "r.log"),
         fake_transport=True,
+        approvals=public_approval(),
     )
     result = run_session_case(case, client, credentials=LoginRequest("copilot_doc_a", "not-committed"))
     assert result.outcome == "not_run"
@@ -659,6 +711,7 @@ def test_confirmed_context_sends_question_and_csrf_without_logging_cookie(tmp_pa
         refusal_log=log,
         chat_reserve_usd=0.05,
         fake_transport=True,
+        approvals=public_approval(),
     )
     result = run_session_case(case, client, credentials=LoginRequest("copilot_doc_a", "not-committed"), fixture_pid="100")
     assert result.outcome == "pass"
@@ -717,6 +770,7 @@ def test_missing_authority_grades_401_200_and_409() -> None:
             today=TODAY,
             rate_cap=RateCap(5),
             fake_transport=True,
+            approvals=public_approval(),
         )
 
     assert run_session_case(case, client_for(401, b'{"error":"not_logged_in"}')).outcome == "pass"
@@ -744,6 +798,7 @@ def test_unsupported_live_cases_stay_not_run() -> None:
         today=TODAY,
         rate_cap=RateCap(5),
         fake_transport=True,
+        approvals=public_approval(),
         patient_context=lambda _session: True,
     )
     by_id = {item.case_id: item for item in load_cases()}
@@ -789,6 +844,7 @@ def test_question_length_sends_one_over_limit_question_and_does_not_retry() -> N
         today=TODAY,
         rate_cap=RateCap(8),
         fake_transport=True,
+        approvals=public_approval(),
     )
     case = next(item for item in load_cases() if item.case_id == "seed-tm-ds-1")
     result = run_session_case(case, client, credentials=LoginRequest("copilot_doc_a", "not-committed"), fixture_pid="100")
@@ -838,6 +894,7 @@ def test_multi_turn_uses_conversation_event_and_grades_canary() -> None:
         rate_cap=RateCap(8),
         chat_reserve_usd=0.05,
         fake_transport=True,
+        approvals=public_approval(),
     )
     result = run_session_case(case, client, credentials=LoginRequest("copilot_doc_a", "not-committed"), fixture_pid="100")
     assert result.outcome == "fail"
@@ -886,6 +943,7 @@ def test_chat_rate_limit_is_error_and_not_retried() -> None:
         rate_cap=RateCap(8),
         chat_reserve_usd=0.05,
         fake_transport=True,
+        approvals=public_approval(),
     )
     result = run_session_case(case, client, credentials=LoginRequest("copilot_doc_a", "not-committed"), fixture_pid="100")
     assert result.outcome == "error"
@@ -911,6 +969,7 @@ def test_patient_open_fails_closed_before_chat() -> None:
             rate_cap=RateCap(8),
             chat_reserve_usd=0.05,
             fake_transport=True,
+            approvals=public_approval(),
         )
 
     chats: list[str] = []
@@ -997,6 +1056,7 @@ def test_patient_open_rejects_wrong_query_and_clears_prior_confirmation() -> Non
             rate_cap=RateCap(8),
             chat_reserve_usd=0.05,
             fake_transport=True,
+            approvals=public_approval(),
         )
 
     def transport(method: str, url: str, headers: dict[str, str] | None = None, body: bytes | str | None = None) -> Response:
@@ -1074,6 +1134,7 @@ def test_patient_open_refuses_before_socket_when_gates_fail() -> None:
         today=TODAY,
         rate_cap=RateCap(2),
         fake_transport=True,
+        approvals=public_approval(),
     )
     client.session.cookie = "OpenEMR=fixture-session"
     client.session.csrf = "fixture-csrf"
@@ -1091,6 +1152,7 @@ def test_patient_open_refuses_before_socket_when_gates_fail() -> None:
         today=TODAY,
         rate_cap=RateCap(2),
         fake_transport=True,
+        approvals=public_approval(),
     )
     unapproved.session.cookie = "OpenEMR=fixture-session"
     unapproved.session.csrf = "fixture-csrf"

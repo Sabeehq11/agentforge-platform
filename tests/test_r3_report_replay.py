@@ -67,6 +67,7 @@ from agentforge.safety.allowlist import Allowlist
 from agentforge.safety.allowlist import Entry as AllowEntry
 from agentforge.safety.chokepoint import RefusedByChokepoint
 from agentforge.safety.phi import require_clean
+from agentforge.safety.operator_approval import OperatorApproval
 from agentforge.safety.rate import RateCap
 from agentforge.safety.spend_limits import Attestation
 from agentforge.store.access import grant_for_test
@@ -333,6 +334,7 @@ def test_a_non_fake_client_over_the_real_transport_is_refused_before_any_socket(
         allowlist=Allowlist((AllowEntry("https", "target.example", 443, "/"),)),
         budget=ledger._budget, attestations=[Attestation("target", "k", 10.0, "someone", TODAY)],
         provider="target", today=TODAY, rate_cap=RateCap(60), chat_reserve_usd=0.05, fake_transport=False,
+        approvals=[OperatorApproval("op", TODAY, "public-target", 0.0, "fixture", TARGET_ORIGIN)],
     )
     with pytest.raises(RefusedByChokepoint) as refused:
         client.verify_identity()
@@ -469,6 +471,7 @@ def test_an_off_list_origin_is_refused_by_the_allowlist_gate() -> None:
         allowlist=Allowlist((AllowEntry("https", "target.example", 443, "/"),)),
         budget=ledger._budget, attestations=[Attestation("target", "k", 10.0, "someone", TODAY)],
         provider="target", today=TODAY, rate_cap=RateCap(60), chat_reserve_usd=0.05, fake_transport=True,
+        approvals=[OperatorApproval("op", TODAY, "public-target", 0.0, "fixture", TARGET_ORIGIN)],
     )
     replay = ClientReplayTarget(conn, client, CREDENTIALS, "100", LATER)
     with pytest.raises(ReplayRefused, match="allowlist"):
@@ -491,6 +494,7 @@ def test_a_non_fake_client_replay_is_refused_with_gate_live_and_writes_no_run_ro
         allowlist=Allowlist((AllowEntry("https", "target.example", 443, "/"),)),
         budget=ledger._budget, attestations=[Attestation("target", "k", 10.0, "someone", TODAY)],
         provider="target", today=TODAY, rate_cap=RateCap(60), chat_reserve_usd=0.05, fake_transport=False,
+        approvals=[OperatorApproval("op", TODAY, "public-target", 0.0, "fixture", TARGET_ORIGIN)],
     )
     replay = ClientReplayTarget(conn, client, CREDENTIALS, "100", LATER)
     with pytest.raises(ReplayRefused, match="gate live"):
@@ -509,6 +513,7 @@ def test_the_loop_halts_on_a_refused_replay_and_never_resumes_a_claimed_handoff_
         allowlist=Allowlist((AllowEntry("https", "target.example", 443, "/"),)),
         budget=ledger._budget, attestations=[Attestation("target", "k", 10.0, "someone", TODAY)],
         provider="target", today=TODAY, rate_cap=RateCap(60), chat_reserve_usd=0.05, fake_transport=False,
+        approvals=[OperatorApproval("op", TODAY, "public-target", 0.0, "fixture", TARGET_ORIGIN)],
     )
     replay = ClientReplayTarget(conn, refused_client, CREDENTIALS, "100", LATER)
     loop = _loop(conn, ledger, journal, [model_json(DISTINCT_TEXTS[1])], replay_target=replay, observed_pin=LATER)
@@ -760,6 +765,7 @@ def test_a_refused_send_records_no_fact(monkeypatch) -> None:  # type: ignore[no
         today=TODAY,
         rate_cap=RateCap(5),
         fake_transport=False,
+        approvals=[OperatorApproval("op", TODAY, "public-target", 0.0, "fixture", TARGET_ORIGIN)],
     )
     with pytest.raises(RefusedByChokepoint):
         client.verify_identity()

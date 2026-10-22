@@ -324,12 +324,15 @@ def p6_client(
     from agentforge.safety.rate import RateCap
     from agentforge.safety.spend_limits import Attestation
 
+    from agentforge.safety.operator_approval import OperatorApproval
+
     return SessionClient(
         TARGET_ORIGIN,
         transport=target,
         allowlist=Allowlist((AllowEntry("https", "target.example", 443, "/"),)),
         budget=budget,
         attestations=[Attestation("target", "target-key", 10.0, "someone", _date(2026, 10, 17))],
+        approvals=[OperatorApproval("op", TODAY, "public-target", 0.0, "fixture", TARGET_ORIGIN)],
         provider="target",
         today=TODAY,
         rate_cap=RateCap(max_requests),

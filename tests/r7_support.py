@@ -123,7 +123,7 @@ def build_green_root(tmp_path: Path) -> Path:
         root / "config/operator_approval.yaml",
         {
             "approvals": [
-                {"approved_by": "x", "approved_on": "2026-10-22", "scope": "public-target", "max_usd": 0, "purpose": "synthetic"}
+                {"approved_by": "x", "approved_on": "2026-10-22", "scope": "public-target", "max_usd": 0, "purpose": "synthetic", "origin": "https://target.example"}
             ]
         },
     )

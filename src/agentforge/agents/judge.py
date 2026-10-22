@@ -380,6 +380,9 @@ class RulesJudge:
             except JudgeTimeoutError:
                 self._ledger.release(call_id)
                 return _envelope("judge_timeout", result["correlation_id"], "needs_human_review", retryable=True)
+            except OSError:
+                # ProviderOutcomeUnknown. The request may have billed. Hold the reservation and do not retry.
+                return _envelope("judge_timeout", result["correlation_id"], "needs_human_review", retryable=True)
             except RefusedByChokepoint as exc:
                 self._ledger.release(call_id)
                 return _envelope("no_findings_in_window", result["correlation_id"], str(exc)[:500], retryable=False)

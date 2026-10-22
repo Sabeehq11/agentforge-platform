@@ -17,7 +17,6 @@ import json
 import os
 from collections.abc import Callable
 
-from agentforge.agents.judge import JudgeTimeoutError
 from agentforge.safety.chokepoint import PROVIDER_ENABLED, RefusedByChokepoint
 
 _KEY_ENV = "OPENROUTER_API_KEY"
@@ -52,6 +51,10 @@ class OpenRouterResponseError(OpenRouterError):
 
 class OpenRouterLabelError(OpenRouterError):
     """HTTP 200 and a parsed reply, but the reply was not one of the allowed labels."""
+
+
+class ProviderOutcomeUnknown(OSError):
+    """The request was handed to the provider and the outcome is unknown. The reservation must be held."""
 
 
 class OpenRouterJudgeModel:
@@ -105,13 +108,15 @@ class OpenRouterJudgeModel:
             else:
                 response = self._transport("POST", self._url, headers=headers, body=payload, timeout=self._timeout_s)
         except TimeoutError as exc:
-            raise JudgeTimeoutError("judge provider timed out") from exc
+            raise ProviderOutcomeUnknown("judge provider timed out") from exc
         except OSError as exc:
-            raise OpenRouterError("language model is unavailable") from exc
+            raise ProviderOutcomeUnknown("judge provider transport failed") from exc
         status = getattr(response, "status", None)
         body = getattr(response, "body", b"")
         code = status if isinstance(status, int) else 0
-        if code in (429, 500, 502, 503, 504):
+        if code in (500, 502, 504):
+            raise ProviderOutcomeUnknown(f"judge provider outcome is unknown (HTTP {code})")
+        if code in (429, 503):
             raise OpenRouterHttpError(code, f"language model is unavailable (HTTP {code})")
         if code != 200:
             raise OpenRouterHttpError(code, f"language model rejected the request (HTTP {code})")

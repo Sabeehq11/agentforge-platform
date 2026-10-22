@@ -40,16 +40,17 @@ from fixtures import (
 
 from agentforge.agents import openrouter as openrouter_module
 from agentforge.agents.openrouter import (
-    OpenRouterError,
     OpenRouterHttpError,
     OpenRouterJudgeModel,
     OpenRouterLabelError,
+    ProviderOutcomeUnknown,
 )
 from agentforge.evals.session import CHAT_PATH, SessionClient, SessionError, TargetStatusError
 from agentforge.orchestrator.journal import Outcome, UnknownOutcome, dispatch
 from agentforge.safety.allowlist import Allowlist, Entry
 from agentforge.safety.budget import Budget, BudgetExceeded, Caps, approval_token
 from agentforge.safety.chokepoint import RefusedByChokepoint, Response, request
+from agentforge.safety.operator_approval import OperatorApproval
 from agentforge.safety.ledger import Ledger, committed_usd, load_shared_budget
 from agentforge.safety.rate import RateCap
 from agentforge.safety.spend_limits import Attestation
@@ -108,6 +109,7 @@ def _call(
         today=TODAY,
         fake_transport=fake,
         rate_cap=rate or RateCap(60),
+        approvals=[OperatorApproval("op", TODAY, "public-target", 0.0, "fixture", f"https://{HOST}")],
     )
 
 
@@ -194,6 +196,7 @@ def _ledger_client(
         chat_reserve_usd=RESERVE,
         fake_transport=True,
         ledger=Ledger(conn, budget),
+        approvals=[OperatorApproval("op", TODAY, "public-target", 0.0, "fixture", ORIGIN)],
     )
     client.session.csrf = "fixture-csrf"
     client.session.chat_url = chat_url or ORIGIN + CHAT_PATH
@@ -358,7 +361,7 @@ def test_provider_missing_usage_is_none_not_zero(monkeypatch: pytest.MonkeyPatch
     assert model.last_cost_usd is None
 
 
-@pytest.mark.parametrize("status", [429, 500, 503])
+@pytest.mark.parametrize("status", [429, 503])
 def test_provider_http_failure_reports_no_cost(monkeypatch: pytest.MonkeyPatch, status: int) -> None:
     model = _provider(monkeypatch, Response(status, b"{}"))
     with pytest.raises(OpenRouterHttpError):
@@ -366,9 +369,17 @@ def test_provider_http_failure_reports_no_cost(monkeypatch: pytest.MonkeyPatch, 
     assert model.last_cost_usd is None
 
 
+@pytest.mark.parametrize("status", [500, 502, 504])
+def test_provider_unknown_status_holds_rather_than_reporting_a_bill(monkeypatch: pytest.MonkeyPatch, status: int) -> None:
+    model = _provider(monkeypatch, Response(status, b"{}"))
+    with pytest.raises(ProviderOutcomeUnknown):
+        model.complete("transcript")
+    assert model.last_cost_usd is None
+
+
 def test_provider_transport_error_reports_no_cost(monkeypatch: pytest.MonkeyPatch) -> None:
     model = _provider(monkeypatch, None, error=ConnectionResetError(54, "reset"))
-    with pytest.raises(OpenRouterError):
+    with pytest.raises(ProviderOutcomeUnknown):
         model.complete("transcript")
     assert model.last_cost_usd is None
 
@@ -393,7 +404,7 @@ def test_provider_calls_take_no_ledger_so_recording_the_bill_is_the_callers_job(
 
 
 # ---------------------------------------------------------------------------------------------------------------
-# F6: the judge's provider path has the same shape as P-U. Injected transport only. No flag is changed.
+# F6: a post-dispatch provider failure holds the Judge reservation. Injected transport only. No flag is changed.
 # ---------------------------------------------------------------------------------------------------------------
 def _judge_with(monkeypatch: pytest.MonkeyPatch, error: Exception) -> tuple[Any, Any]:
     from test_p4_judge import _judge, _ledger
@@ -408,16 +419,16 @@ def _judge_with(monkeypatch: pytest.MonkeyPatch, error: Exception) -> tuple[Any,
 
 
 @pytest.mark.parametrize("error", [TimeoutError("timed out"), ConnectionResetError(54, "reset after write")])
-def test_f6_provider_failure_after_dispatch_releases_the_judge_reservation_at_zero(
+def test_f6_provider_failure_after_dispatch_holds_the_judge_reservation(
     monkeypatch: pytest.MonkeyPatch, error: Exception
 ) -> None:
-    """The request was handed to the transport. Whether it billed is unknown. The ledger is left at $0."""
+    """The request was handed to the transport. Whether it billed is unknown, so the reservation is held in full."""
     from test_p4_judge import _result, _transcript
 
     judge, ledger = _judge_with(monkeypatch, error)
     outcome = judge.judge_transcript(
         _result(subcategory="TM-SC-1"), _transcript("workflow only", transcript_id="rec-f6")
     )
-    assert outcome["error_code"] in {"judge_timeout", "no_findings_in_window"}
-    assert ledger.totals("judge").reserved_usd == 0
+    assert outcome["error_code"] == "judge_timeout" and outcome["retryable"] is True
+    assert ledger.totals("judge").reserved_usd == 0.01
     assert ledger.totals("judge").incurred_usd == 0

@@ -7,8 +7,10 @@ import pytest
 
 from agentforge.safety.operator_approval import (
     OperatorApprovalRefused,
+    authorize_spend,
     load_approvals,
     require_operator_approval,
+    require_public_target,
 )
 from agentforge.safety.spend_limits import SpendLimitNotAttested
 
@@ -58,8 +60,43 @@ def test_fresh_five_dollar_approval_matches_only_its_scope(tmp_path: Path) -> No
         require_operator_approval("openrouter", approvals, today=TODAY)
 
 
+def test_public_target_approval_is_origin_bound_and_not_a_spend_ceiling(tmp_path: Path) -> None:
+    origin = "https://target.example"
+    fresh = (
+        "approvals:\n"
+        "  - {approved_by: op, approved_on: 2026-10-19, scope: public-target, max_usd: 0, purpose: one window,"
+        " origin: https://target.example/}\n"
+    )
+    approvals = load_approvals(_write(tmp_path, fresh))
+    assert require_public_target(approvals, origin=origin, today=TODAY).origin == origin
+    assert require_public_target(approvals, origin=origin + ":443", today=TODAY).origin == origin
+    with pytest.raises(OperatorApprovalRefused):
+        require_public_target(approvals, origin="https://other.example", today=TODAY)
+    with pytest.raises(OperatorApprovalRefused):
+        require_public_target(approvals, origin=origin, today=date(2026, 10, 21))
+    with pytest.raises(SpendLimitNotAttested):
+        authorize_spend("openrouter", attestations=[], approvals=approvals, today=TODAY)
+
+    stale = (
+        "approvals:\n"
+        "  - {approved_by: op, approved_on: 2026-10-17, scope: public-target, max_usd: 0, purpose: one window,"
+        " origin: https://target.example}\n"
+    )
+    priced = (
+        "approvals:\n"
+        "  - {approved_by: op, approved_on: 2026-10-19, scope: public-target, max_usd: 5.0, purpose: one window,"
+        " origin: https://target.example}\n"
+    )
+    unbound = (
+        "approvals:\n"
+        "  - {approved_by: op, approved_on: 2026-10-19, scope: public-target, max_usd: 0, purpose: one window}\n"
+    )
+    for body in (stale, priced, unbound):
+        with pytest.raises(OperatorApprovalRefused):
+            require_public_target(load_approvals(_write(tmp_path, body)), origin=origin, today=TODAY)
+
+
 def test_approval_does_not_write_an_attestation(tmp_path: Path) -> None:
-    from agentforge.safety.operator_approval import authorize_spend
 
     body = (
         "approvals:\n"

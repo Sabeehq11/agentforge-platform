@@ -10,6 +10,7 @@ import pytest
 
 from agentforge.safety import chokepoint
 from agentforge.safety.allowlist import Allowlist, Entry
+from agentforge.safety.operator_approval import OperatorApproval
 from agentforge.safety.budget import Budget, Caps, approval_token, load_caps
 from agentforge.safety.chokepoint import RefusedByChokepoint, Response, request
 from agentforge.safety.identity import IdentityMismatch, check_login_page
@@ -55,6 +56,7 @@ def call(spy: Spy, **over: object) -> Response:
         est_cost_usd=0.05,
         today=TODAY,
         fake_transport=True,
+        approvals=[OperatorApproval("op", TODAY, "public-target", 0.0, "fixture", "https://target.example")],
     )
     kw.update(over)
     return request("GET", URL, **kw)  # type: ignore[arg-type]
@@ -383,6 +385,7 @@ def test_identity_get_does_not_need_a_model_key_attestation(monkeypatch: pytest.
         today=TODAY,
         rate_cap=RateCap(1),
         fake_transport=True,
+        approvals=[OperatorApproval("op", TODAY, "public-target", 0.0, "fixture", "https://target.example")],
     )
     client.verify_identity()
     assert calls == ["GET https://target.example/interface/login/login.php?site=default"]

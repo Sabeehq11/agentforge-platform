@@ -42,7 +42,10 @@ def test_new_budget_refuses_before_transport_when_prior_spend_would_exceed_five(
             allowlist=Allowlist((Entry("https", "target.example", 443, "/"),)),
             budget=budget,
             attestations=[],
-            approvals=[OperatorApproval("op", TODAY, "local-target", 5.0, "local-p4")],
+            approvals=[
+                OperatorApproval("op", TODAY, "local-target", 5.0, "local-p4"),
+                OperatorApproval("op", TODAY, "public-target", 0.0, "fixture", "https://target.example"),
+            ],
             provider="target",
             est_cost_usd=0.25,
             today=TODAY,
