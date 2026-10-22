@@ -142,6 +142,30 @@ def _open(
     )
 
 
+def _live(args: argparse.Namespace) -> int:
+    """The gated live path. Every gate, and every refusal with zero effects, lives in orchestrator/live.py."""
+    from datetime import date
+
+    from agentforge.orchestrator.live import main_live
+
+    result = main_live(
+        ROOT,
+        conflicts={
+            "variant_campaign": args.variant_campaign,
+            "variants": args.variants is not None,
+            "unpinned": args.unpinned,
+            "multi_turn": args.multi_turn,
+            "trace": bool(args.trace),
+        },
+        today=date.today(),
+        resume=args.resume,
+        accept_unknown=args.accept_unknown,
+        correlation_id=args.correlation_id,
+    )
+    print(json.dumps(result.body, default=str) if result.body is not None else result.message)
+    return result.code
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Orchestrate one campaign. Dry-run is the default.")
     parser.add_argument("--dry-run", action="store_true", default=True)
@@ -169,8 +193,7 @@ def main(argv: list[str] | None = None) -> int:
         if not LIVE_ENABLED:
             print("refused: LIVE_ENABLED is false. No network call was made.")
             return 2
-        print("refused: a live campaign also needs an unexpired operator approval and a passing identity check.")
-        return 2
+        return _live(args)
 
     conn = sqlite3.connect(":memory:")
     conn.execute("PRAGMA foreign_keys = ON")

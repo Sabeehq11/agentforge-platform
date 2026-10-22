@@ -5,7 +5,9 @@ These read the runbook text only. They cannot show that the commands work, becau
 
 from __future__ import annotations
 
+import os
 import re
+import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -130,3 +132,184 @@ def test_existing_stack_canary_is_taken_before_and_compared_after() -> None:
 def test_the_runbook_is_labelled_untested_and_approves_no_other_gate() -> None:
     assert "untested" in DEPLOY and "never run" in DEPLOY
     assert "does not approve the allowlist commit (Gate B)" in FLAT_DEPLOY
+
+
+# --- the canary, run for real against a fake `docker` --------------------------------------------------------------
+# The canary script is taken from the runbook text, so the test cannot drift from what the operator would paste. `docker` is a
+# small shell shim that serves canned state from files. Nothing here touches a real Docker daemon.
+PROJECT = "copilot-p"
+FAKE_DOCKER = r"""#!/usr/bin/env bash
+f="$FAKE"
+case "$1 $2" in
+  "ps -aq") [ -s "$f/containers.txt" ] && echo ids || true ;;
+  "inspect --format") cat "$f/containers.txt" ;;
+  "volume ls") cat "$f/volumes.txt" ;;
+  "network ls") cat "$f/networks.txt" ;;
+  "volume inspect") [ -f "$f/vol/$5.labels" ] && cat "$f/vol/$5.labels" || exit 1 ;;
+  "ps -a") v="${4#volume=}"; [ -f "$f/vol/$v.users" ] && cat "$f/vol/$v.users" || true ;;
+  *) echo "fake docker: unexpected call: $*" >&2; exit 99 ;;
+esac
+"""
+OLD_CONTAINERS = [
+    "idA /web img1 running 2026-10-20T01:00:00Z 0 {}",
+    "idB /db img2 running 2026-10-20T01:00:00Z 0 {}",
+]
+OUR_CONTAINER = f"idZ /{PROJECT}-openemr-1 img3 running 2026-10-22T01:00:00Z 0 {{}}"
+ANON = "a" * 64
+
+
+def _canary_script() -> str:
+    match = re.search(r"cat > \"\$WORK/canary.sh\" <<'SH'\n(.*?)\nSH\n", DEPLOY, re.S)
+    assert match, "canary.sh heredoc not found in the deploy runbook"
+    return match.group(1) + "\n"
+
+
+class FakeHost:
+    def __init__(self, tmp: Path) -> None:
+        self.tmp = tmp
+        self.fake = tmp / "fake"
+        self.work = tmp / "work"
+        (self.fake / "vol").mkdir(parents=True)
+        self.work.mkdir()
+        (tmp / "bin").mkdir()
+        shim = tmp / "bin" / "docker"
+        shim.write_text(FAKE_DOCKER)
+        shim.chmod(0o755)
+        script = self.work / "canary.sh"
+        script.write_text(_canary_script())
+        script.chmod(0o755)
+
+    def state(
+        self,
+        containers: list[str],
+        volumes: list[str],
+        networks: list[str],
+        meta: dict[str, tuple[str, list[str]]] | None = None,
+    ) -> None:
+        (self.fake / "containers.txt").write_text("".join(c + "\n" for c in containers))
+        (self.fake / "volumes.txt").write_text("".join(v + "\n" for v in volumes))
+        (self.fake / "networks.txt").write_text("".join(n + "\n" for n in networks))
+        for old in (self.fake / "vol").iterdir():
+            old.unlink()
+        for name, (labels, users) in (meta or {}).items():
+            (self.fake / "vol" / f"{name}.labels").write_text(labels)
+            (self.fake / "vol" / f"{name}.users").write_text("".join(u + "\n" for u in users))
+
+    def run(self, mode: str, label: str) -> subprocess.CompletedProcess[str]:
+        env = {
+            "PATH": f"{self.tmp / 'bin'}:{os.environ['PATH']}",
+            "P": PROJECT,
+            "WORK": str(self.work),
+            "FAKE": str(self.fake),
+        }
+        return subprocess.run(
+            ["bash", str(self.work / "canary.sh"), mode, label], env=env, capture_output=True, text=True, check=False
+        )
+
+
+BASE_VOLUMES = ["old_data", "other_project_data"]
+BASE_NETWORKS = ["n1 bridge", "n2 old_default"]
+OUR_VOLUMES = [f"{PROJECT}_databasevolume", f"{PROJECT}_sitesvolume", f"{PROJECT}-agent_agent_data"]
+OUR_NETWORK = f"n9 {PROJECT}_default"
+ANON_LABEL = "com.docker.volume.anonymous \n"
+
+
+def _after_stage(
+    tmp: Path,
+    *,
+    extra_volumes: list[str],
+    meta: dict[str, tuple[str, list[str]]],
+    containers: list[str] | None = None,
+    base_volumes: list[str] | None = None,
+) -> subprocess.CompletedProcess[str]:
+    host = FakeHost(tmp)
+    before_volumes = base_volumes if base_volumes is not None else BASE_VOLUMES
+    host.state(OLD_CONTAINERS, before_volumes, BASE_NETWORKS)
+    assert host.run("snap", "before").returncode == 0
+    assert (host.work / "volumes-before.txt").read_text().split() == sorted(before_volumes)
+    host.state(
+        containers if containers is not None else [*OLD_CONTAINERS, OUR_CONTAINER],
+        before_volumes + OUR_VOLUMES + extra_volumes,
+        [*BASE_NETWORKS, OUR_NETWORK],
+        meta,
+    )
+    return host.run("diff", "after")
+
+
+def test_the_runbook_canary_does_not_use_xargs_and_names_its_snapshots() -> None:
+    script = _canary_script()
+    assert "xargs" not in script
+    for name in ("containers-$1.txt", "volumes-$1.txt", "networks-$1.txt"):
+        assert name in script
+
+
+def test_canary_is_ok_when_only_this_projects_objects_are_added(tmp_path: Path) -> None:
+    result = _after_stage(tmp_path, extra_volumes=[], meta={})
+    assert result.returncode == 0 and "CANARY OK" in result.stdout, result.stdout + result.stderr
+
+
+def test_an_anonymous_volume_used_only_by_this_project_is_ignored_and_named(tmp_path: Path) -> None:
+    meta = {ANON: (ANON_LABEL, [f"{PROJECT}-openemr-1 {PROJECT}"])}
+    result = _after_stage(tmp_path, extra_volumes=[ANON], meta=meta)
+    assert result.returncode == 0 and "CANARY OK" in result.stdout, result.stdout + result.stderr
+    assert "ignoring anonymous volume aaaaaaaaaaaa" in result.stderr and f"{PROJECT}-openemr-1" in result.stderr
+
+
+def test_an_anonymous_volume_used_by_this_projects_agent_project_is_also_ignored(tmp_path: Path) -> None:
+    meta = {ANON: (ANON_LABEL, [f"{PROJECT}-agent-agent-1 {PROJECT}-agent"])}
+    assert _after_stage(tmp_path, extra_volumes=[ANON], meta=meta).returncode == 0
+
+
+def test_an_unrelated_anonymous_volume_still_fails_the_canary(tmp_path: Path) -> None:
+    meta = {ANON: (ANON_LABEL, ["someone-else-1 someone-else"])}
+    result = _after_stage(tmp_path, extra_volumes=[ANON], meta=meta)
+    assert result.returncode == 1 and "CANARY CHANGED" in result.stdout, result.stdout
+    assert ANON in result.stdout and "ignoring" not in result.stderr
+
+
+def test_an_anonymous_volume_shared_with_another_project_still_fails(tmp_path: Path) -> None:
+    meta = {ANON: (ANON_LABEL, [f"{PROJECT}-openemr-1 {PROJECT}", "web other-project"])}
+    result = _after_stage(tmp_path, extra_volumes=[ANON], meta=meta)
+    assert result.returncode == 1 and ANON in result.stdout
+
+
+def test_an_anonymous_volume_that_nothing_mounts_still_fails(tmp_path: Path) -> None:
+    result = _after_stage(tmp_path, extra_volumes=[ANON], meta={ANON: (ANON_LABEL, [])})
+    assert result.returncode == 1 and ANON in result.stdout
+
+
+def test_a_name_prefix_without_the_project_label_does_not_prove_ownership(tmp_path: Path) -> None:
+    meta = {ANON: (ANON_LABEL, [f"{PROJECT}-lookalike-1 not-our-project"])}
+    assert _after_stage(tmp_path, extra_volumes=[ANON], meta=meta).returncode == 1
+
+
+def test_a_new_named_volume_without_the_prefix_still_fails_even_if_we_mount_it(tmp_path: Path) -> None:
+    meta = {"stray_named": ("\n", [f"{PROJECT}-openemr-1 {PROJECT}"])}
+    result = _after_stage(tmp_path, extra_volumes=["stray_named"], meta=meta)
+    assert result.returncode == 1 and "stray_named" in result.stdout
+
+
+def test_an_anonymous_volume_that_existed_before_is_never_ignored(tmp_path: Path) -> None:
+    # It is in the "before" snapshot, so it stays in the comparison. Removing it is a change even if we now mount it.
+    meta = {ANON: (ANON_LABEL, [f"{PROJECT}-openemr-1 {PROJECT}"])}
+    result = _after_stage(
+        tmp_path, extra_volumes=[], meta=meta, base_volumes=[*BASE_VOLUMES, ANON]
+    )
+    assert result.returncode == 0, "an unchanged old volume is not a change"
+    host = FakeHost(tmp_path / "removed")
+    host.state(OLD_CONTAINERS, [*BASE_VOLUMES, ANON], BASE_NETWORKS)
+    assert host.run("snap", "before").returncode == 0
+    host.state([*OLD_CONTAINERS, OUR_CONTAINER], [*BASE_VOLUMES, *OUR_VOLUMES], [*BASE_NETWORKS, OUR_NETWORK])
+    removed = host.run("diff", "after")
+    assert removed.returncode == 1 and ANON in removed.stdout
+
+
+def test_a_restarted_existing_container_still_fails_the_canary(tmp_path: Path) -> None:
+    restarted = [OLD_CONTAINERS[0].replace("2026-10-20T01:00:00Z", "2026-10-22T02:00:00Z"), OLD_CONTAINERS[1], OUR_CONTAINER]
+    result = _after_stage(tmp_path, extra_volumes=[], meta={}, containers=restarted)
+    assert result.returncode == 1 and "idA" in result.stdout
+
+
+def test_the_status_text_is_not_part_of_the_comparison() -> None:
+    script = _canary_script()
+    assert "State.Status" in script and "{{.Status}}" not in script

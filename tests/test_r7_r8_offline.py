@@ -33,6 +33,7 @@ from agentforge.gates.preflight import run_preflight
 from agentforge.safety import chokepoint
 
 BASELINE = ROOT / "data" / "r7r8-baseline.txt"
+FROZEN = ROOT / "tests" / "fixtures" / "r7r8-frozen.txt"
 SQLITE = ROOT / "data" / "agentforge.sqlite3"
 CANARIES = {
     "OPENROUTER_API_KEY": "canary-openrouter-not-real",
@@ -268,10 +269,10 @@ def test_spend_limits_has_no_attestation() -> None:
     assert data["attestations"] == []
 
 
-def _baseline_hashes() -> dict[str, str]:
+def _baseline_hashes(path: Path = FROZEN) -> dict[str, str]:
     found: dict[str, str] = {}
     section = False
-    for line in BASELINE.read_text(encoding="utf-8").splitlines():
+    for line in path.read_text(encoding="utf-8").splitlines():
         if line.startswith("## "):
             section = line.startswith("## sha256 frozen files")
             continue
@@ -281,7 +282,6 @@ def _baseline_hashes() -> dict[str, str]:
     return found
 
 
-@pytest.mark.skipif(not BASELINE.exists(), reason="no local baseline (data/ is gitignored)")
 def test_frozen_files_match_the_b0_baseline() -> None:
     baseline = _baseline_hashes()
     assert len(baseline) >= 20

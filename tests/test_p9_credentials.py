@@ -61,4 +61,4 @@ def test_provider_key_is_read_only_by_openrouter() -> None:
     for path in root.rglob("*.py"):
         if "OPENROUTER_API_KEY" in path.read_text(encoding="utf-8"):
             readers.append(path.relative_to(root).as_posix())
-    assert set(readers) <= {"agents/openrouter.py", "agents/probe.py"}
+    assert set(readers) <= {"agents/openrouter.py", "agents/openrouter_redteam.py", "agents/probe.py"}

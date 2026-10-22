@@ -492,6 +492,28 @@ Findings that need your decision before any operational gate:
 
 Spend log: no new entry. Exposure `E = I + O + X` is `$0.1522038 + 0 + 0` as of this date, against the `$12.00` ceiling.
 
+## R9 wired, not live (2026-10-21)
+
+R9 is wired offline and **blocked from live execution**. Nothing was requested, called or spent. Both kill switches stayed
+`False`, no key was used and `.env` was not opened. No traceability row moved to `met`, and R10 to R14 are untouched.
+
+- `src/agentforge/agents/openrouter_redteam.py`: the production Red Team `ModelClient`. A refusal before dispatch releases the
+  reservation at $0. A timeout, transport error or 5xx other than 503 is an `OSError`, so the journal records `unknown` and holds
+  the reservation. 429 and 503 retry under the bounded policy. Any other 4xx releases and halts. A 200 with no cost is charged the
+  whole reservation. A cost above the reservation stops the campaign and marks the row.
+- `src/agentforge/orchestrator/live.py`: the gated `--live` assembly over the existing `CampaignLoop`. It refuses with zero effects
+  unless both switches are true, the preflight gates are GO (K1 included), the deploy attestation and pin are valid and the origins
+  agree. Only then are `.env` and the store opened. One pinned, novel, one-turn TM-PI campaign, two attacks, no report files.
+- `scripts/orchestrate.py` changed under a narrow, reviewed exception to wire `--live`. Its entry in the frozen baseline is not
+  updated yet and waits for review.
+- Small loop changes: a model-call `UnknownOutcome` is a retryable halt, `RunOutcome.verdicts` is now filled, and `SequenceRunner`
+  accepts `credentials=None`.
+- Tests: `tests/test_r9_live.py`. The live path ran only against a scripted target and a scripted provider, in a synthetic root where
+  every gate is green. In the real repo it refuses on K1, P-U, R8, the attestation and the allowlist.
+
+Still blocking a live run: [P-U](prerequisites/P-U.md), [public-target authorization](prerequisites/public-target-authorization.md),
+R7 (no public URL), R8 (provider cap unverified), and a fresh per-run operator approval.
+
 ## Log
 
 | Date | Entry |

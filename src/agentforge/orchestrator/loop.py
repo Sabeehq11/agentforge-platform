@@ -242,6 +242,9 @@ class CampaignLoop:
                 return None
             try:
                 generated = self._generator.generate(request, chosen, parent=parent)
+            except UnknownOutcome as exc:
+                # A model call that may have left the process is held, never replayed, and halts retryable.
+                return self._stop(correlation_id, "target_unreachable", True, f"unknown_outcome {exc.call_id}")
             except GenerationStopped as exc:
                 if exc.halt is not None:
                     return self._from_halt(correlation_id, exc.halt.halt)  # GenerationStopped.halt is a StepHalt
@@ -487,6 +490,8 @@ class CampaignLoop:
                     request, "variant", parent=parent, accepted=accepted, report=report,
                     max_rejections=self._config.variants.max_total_rejections - self._generator.total_rejections,
                 )
+            except UnknownOutcome as exc:
+                return self._stop(correlation_id, "target_unreachable", True, f"unknown_outcome {exc.call_id}")
             except GenerationStopped as exc:
                 if exc.kind == "rejections":
                     break
@@ -538,13 +543,16 @@ class CampaignLoop:
     def _finish(self, correlation_id: str, detail: str = "") -> RunOutcome:
         set_phase(self._conn, correlation_id, "done")
         campaign = require_campaign(self._conn, correlation_id)
-        return RunOutcome(correlation_id, "done", detail=detail, sequences=int(campaign["sequences_started"]))
+        return RunOutcome(
+            correlation_id, "done", detail=detail, sequences=int(campaign["sequences_started"]), verdicts=list(self._verdicts)
+        )
 
     def _stop(self, correlation_id: str, code: str, retryable: bool, detail: str) -> RunOutcome:
         halt(self._conn, correlation_id, code, detail, retryable=retryable, role="orchestrator")
         campaign = require_campaign(self._conn, correlation_id)
         return RunOutcome(
-            correlation_id, "halted", error_code=code, detail=detail, sequences=int(campaign["sequences_started"])
+            correlation_id, "halted", error_code=code, detail=detail, sequences=int(campaign["sequences_started"]),
+            verdicts=list(self._verdicts),
         )
 
 

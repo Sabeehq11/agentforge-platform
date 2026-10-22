@@ -28,7 +28,7 @@ from agentforge.contracts.validate import ContractError, validate
 from agentforge.evals.cases import Case
 from agentforge.orchestrator.journal import Journal, Outcome
 from agentforge.orchestrator.policy import Config
-from agentforge.orchestrator.retry import StepHalt, run_step
+from agentforge.orchestrator.retry import Halt, StepHalt, run_step
 from agentforge.orchestrator.state import now_iso
 
 MODES = ("novel", "mutation", "multi_turn", "variant")
@@ -200,10 +200,15 @@ class RedTeamGenerator:
     def _ask(self, request: CampaignRequest, prompt: str) -> str:
         """One journaled, reserved model call under the bounded retry policy. Returns the raw reply text."""
         step = self._alloc_step()
+        excess: list[float] = []
 
         def make_send(_attempt: int) -> Callable[[], Outcome]:
             def send() -> Outcome:
                 reply = self._model.complete(prompt)
+                # A zero reservation is the offline fixture mode, where the scripted client's cost is not a charge.
+                # With a real reservation a reported cost above it is never absorbed silently.
+                if self._reserve_usd > 0 and reply.cost_usd > self._reserve_usd + 1e-12:
+                    excess.append(reply.cost_usd)
                 cost = min(max(reply.cost_usd, 0.0), self._reserve_usd)
                 return Outcome(output=reply.text, incurred_usd=cost, http_status=200)
 
@@ -218,6 +223,14 @@ class RedTeamGenerator:
             kind = "budget" if exc.halt.code == "budget_exceeded" else "halt"
             raise GenerationStopped(kind, exc.halt.detail, exc) from exc
         self._last_step = step
+        if excess:
+            # The ledger holds the reservation as incurred, which is all it can hold. The row says the bill was
+            # larger so a person reconciles it, and no further model call follows.
+            row = self._journal.latest(request["correlation_id"], step)
+            if row is not None:
+                self._journal.annotate(row.call_id, "cost_exceeds_reservation")
+            detail = "provider-reported cost exceeds the reservation"
+            raise GenerationStopped("budget", detail, StepHalt(Halt("budget_exceeded", False, detail)))
         return outcome.output
 
     def _reject(self, request: CampaignRequest, reason: str) -> None:

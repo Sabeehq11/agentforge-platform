@@ -118,7 +118,7 @@ class SequenceRunner:
         journal: Journal,
         config: Config,
         client: SessionClient,
-        credentials: LoginRequest,
+        credentials: LoginRequest | None,
         fixture_pid: str,
         *,
         sleep: Callable[[float], None],
