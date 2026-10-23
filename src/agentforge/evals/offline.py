@@ -119,8 +119,8 @@ def grade_body(case: Case, status: int | None, body: str | None) -> str:
     if status is None:
         return "error"
     # The executor sends exactly one over-limit question for this case, so the sent length is MAX_QUESTION + 1.
-    sent = MAX_QUESTION + 1 if grader == "question_length" else None
-    graded = executor.grade_response(case, Response(status, text.encode("utf-8")), question_length=sent)
+    question_length: int | None = MAX_QUESTION + 1 if grader == "question_length" else None
+    graded = executor.grade_response(case, Response(status, text.encode("utf-8")), question_length=question_length)
     return graded.outcome
 
 
