@@ -5,38 +5,40 @@ attack suite: cases come in P3 and must reference the IDs defined here.
 
 ## Summary
 
-The Co-Pilot answers a physician's question from the open chart, an uploaded lab PDF or intake form, or a small
-guideline corpus. Only the OpenEMR module is public. The agent listens on localhost and the deploy script fails if it
-becomes reachable through the tunnel, so every attack starts as a logged-in session. A direct agent API call is a
-different surface and out of scope.
+The Co-Pilot answers from the open chart, an uploaded lab PDF or intake form, or a small guideline corpus. Only the
+OpenEMR module is public. The agent listens on localhost, and deployment fails if the tunnel can reach it, so every
+in-scope attack is a logged-in session. A direct agent API call is a different surface and out of scope.
 
-Six categories cover the surface the PRD names. The highest risk is indirect prompt injection through upload
-(TM-PI-2). An uploaded PDF is rendered and handed to a vision model whose output becomes stored facts, and those
-facts are later placed in the prompt of a second model call. Both prompts say document text is data, not
-instructions, and a verifier keeps only claims whose numbers and dates appear in a cited quote. None of that has
-been measured against an adversarial document, and a vision model is the component least able to separate a printed
-instruction from a printed lab value. Cross-patient exposure (TM-EX-2) is next, because the impact is another
-patient's chart. OpenEMR itself returns any patient to any clinician token, which the target measured and recorded,
-so the only patient-level control is the agent's own CareTeam check, re-run on every tool call and before any cached
-result is served. It fails closed, but it trusts CareTeam membership, and anyone who can edit care teams changes who
-is admitted. Authorization bypass (TM-EX-3) and privilege escalation (TM-ID-1) sit on that same control. Cost
-amplification (TM-DS-3) matters separately: one chat costs about five cents and an upload adds a vision call of up
-to thirty seconds, so a modest scripted session spends real money. The target's rate limiter is in memory and per
-process, so it survives neither a restart nor a second instance.
+Indirect injection through upload is the highest risk (TM-PI-2). A PDF is rendered for a vision model, stored as
+chart facts, and later inserted into a second prompt. Both prompts treat document text as data, and a verifier keeps
+a claim only when its numbers and dates appear in a cited quote. None of that has been measured against an
+adversarial document. A vision model is also the component least able to separate a printed instruction from a
+printed lab value, and a successful injection persists.
 
-Two facts shape how to test. The target's defenses are instructions to a model plus deterministic checks after it,
-and an instruction is not a control until it is measured. The verifier, the tool allowlist and the step caps are
-real code and are cited below, but present in code is not the same as holds. And the platform can poison itself: a
-transcript quoting a successful injection is exactly what the Judge and the Documentation agent will later read, so
-a compromised target can compromise the thing judging it (TM-PL-1, TM-PL-2). That is why the Judge's first layer is
-deterministic and why a human approves publication.
+Cross-patient exposure is next (TM-EX-2): the impact is another patient's chart. OpenEMR returns any patient to any
+clinician token, which the target measured. The only patient-level control is the agent's CareTeam check, repeated
+on every tool call and before a cached result is served. It fails closed but trusts membership, so editing care
+teams changes who is admitted. A missing subject is treated as a match, and the patient comparison is a suffix, not
+an exact identifier. Authorization bypass (TM-EX-3) and privilege escalation (TM-ID-1) use that same control.
 
-Coverage is ranked by clinical impact, then by whether the defense is unverified, then by whether a deterministic
-check can grade the case. First for P3, in order: indirect injection through upload (TM-PI-2), cross-patient access
-(TM-EX-2), authorization bypass (TM-EX-3), cost amplification (TM-DS-3), direct injection (TM-PI-1) and multi-turn
-injection (TM-PI-3). Six, against a floor of three. Tool misuse and state corruption rank lower because the code
-already constrains them, and they are covered once the higher-risk cases exist. Nothing here is a test result. No
-request was made to the running target, and every defense below comes from reading code, not from running it.
+Cost amplification is separate (TM-DS-3). A chat costs about five cents and an upload adds a vision call of up to
+thirty seconds, so a scripted session spends real money. The limiter is in memory and per process, so neither a
+restart nor a second instance preserves it, and the target has no spend cap.
+
+The rest is narrower. Dose and diagnosis requests are declined before the model, but direct injection with no
+checkable number can pass (TM-PI-1). Multi-turn injection resends history, with no content check on earlier turns
+(TM-PI-3). Tools are read-only, capped and guarded against recursion. Conversation state is process memory, so a
+restart drops it.
+
+An instruction is not a control until measured. The verifier, allowlist and step caps are real code, but present in
+code is not the same as holds. The platform can also poison itself: a transcript quoting a successful injection is
+what the Judge and Documentation agent later read, so a compromised target can compromise its judge (TM-PL-1,
+TM-PL-2). The Judge's first layer is deterministic, and a human approves publication.
+
+Rank is clinical impact, then unverified defense, then whether a deterministic check can grade the case. First:
+upload injection (TM-PI-2), cross-patient access (TM-EX-2), authorization bypass (TM-EX-3), cost amplification
+(TM-DS-3), direct injection (TM-PI-1), then multi-turn injection (TM-PI-3). Six, against a floor of three. This is
+not a test result. No request reached the running target; every defense below comes from the pinned code.
 
 ## Scope and method
 
