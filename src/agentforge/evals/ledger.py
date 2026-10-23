@@ -38,6 +38,14 @@ def _stored_case_ids(results_dir: Path, name: str) -> set[str]:
     return {str(row["case_id"]) for row in stored.get("results", []) if isinstance(row, dict) and "case_id" in row}
 
 
+def _stored_result_ids(results_dir: Path, name: str) -> set[str]:
+    path = results_dir / name
+    if not path.is_file():
+        return set()
+    stored = json.loads(path.read_text(encoding="utf-8"))
+    return {str(row["id"]) for row in stored.get("results", []) if isinstance(row, dict) and "id" in row}
+
+
 def check_ledger(ledger: dict[str, Any], cases: Iterable[Case], results_dir: Path | None = None) -> list[str]:
     """Return every problem found. An empty list means the ledger is internally consistent, not that anything is met."""
     problems: list[str] = []
@@ -76,7 +84,8 @@ def check_ledger(ledger: dict[str, Any], cases: Iterable[Case], results_dir: Pat
                 problems.append(f"{rid} unknown gate {gate}")
         if status == "partially_exercised" and not any(gate in U_ITEMS for gate in gates):
             problems.append(f"{rid} partially exercised row is assigned to R10 alone, which cannot observe its unobserved half")
-        if not (status == "exercised" and gates == ["R10"]) and not str(row.get("unobserved_half", "")).strip():
+        observed = str(row.get("unobserved_half", "")).strip()
+        if not observed and not (status == "exercised" and (gates == ["R10"] or not gates)):
             problems.append(f"{rid} names no unobserved half")
         kind = str(row.get("evidence_kind"))
         if kind not in EVIDENCE_KINDS:
@@ -102,13 +111,18 @@ def check_ledger(ledger: dict[str, Any], cases: Iterable[Case], results_dir: Pat
         if kind in ("offline_replay", "response_claim_proxy", "none", "platform_scan", "code_reading") and row.get("target_evidence") != "none":
             if not (isinstance(row.get("target_evidence"), str) and row["target_evidence"].startswith("evals/results/")):
                 problems.append(f"{rid} target_evidence must be none for {kind}")
+        canary_ids = [case_id for case_id in case_ids if case_id in by_id and by_id[case_id].grader == "canary"]
+        mapped_ids = {by_id[case_id].evidence_id for case_id in case_ids if case_id in by_id and by_id[case_id].evidence_id}
+        evidence = row.get("target_evidence")
+        cited = evidence if isinstance(evidence, str) and evidence.startswith("evals/results/") else ""
+        cited_ids = _stored_result_ids(results, Path(cited).name) if cited else set()
+        if rid == "LLM08" and canary_ids and kind != "response_claim_proxy" and not (mapped_ids & cited_ids):
+            problems.append(f"{rid} LLM08 canary evidence kind must be response_claim_proxy")
         if kind == "local_target":
-            if row.get("target_evidence") != "local_target":
+            if evidence != "local_target" and rid not in cited_ids and not (mapped_ids & cited_ids):
                 problems.append(f"{rid} local_target evidence must say so")
-            if not (set(case_ids) & campaign_ids):
+            if not (set(case_ids) & campaign_ids) and rid not in cited_ids and not (mapped_ids & cited_ids):
                 problems.append(f"{rid} claims local_target evidence and no case has a stored outcome")
-        if any(by_id[case_id].owasp_id == "LLM08" for case_id in case_ids if case_id in by_id) and kind != "response_claim_proxy":
-            problems.append(f"{rid} LLM08 evidence kind must be response_claim_proxy")
     ledger_ids = {str(row.get("id")) for row in rows}
     controls = set(header.get("platform_controls") or [])
     for case in cases:

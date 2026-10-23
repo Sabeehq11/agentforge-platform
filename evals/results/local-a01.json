@@ -1,0 +1,17 @@
+{
+  "pin": "9f036541cf95e896db065e0c652afb75627b03c2",
+  "billable_contact": false,
+  "secrets_stored": false,
+  "patient_data_changed": false,
+  "requests": 1,
+  "results": [
+    {
+      "id": "A01",
+      "grade": "pass",
+      "target": "running",
+      "method": "one signed POST /v1/tools/get_problems from fixture user copilot_doc_a for fixture patient 101, signed inside the module container",
+      "observed": "status 403; records_present false; error forbidden; authz_decision allowed false reason not_on_care_team; tool_denied tool get_problems outcome not_on_care_team",
+      "inconclusive": false
+    }
+  ]
+}

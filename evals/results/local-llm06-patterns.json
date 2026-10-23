@@ -1,0 +1,19 @@
+{
+  "pin": "9f036541cf95e896db065e0c652afb75627b03c2",
+  "billable_contact": false,
+  "secrets_stored": false,
+  "patient_data_changed": false,
+  "matched_content_stored": false,
+  "patterns": ["ssn", "phone", "email", "mrn"],
+  "results": [
+    {
+      "id": "LLM06",
+      "grade": "pass",
+      "target": "local-stores",
+      "method": "read-only count of ssn, phone, email, and mrn patterns in the running agent audit rows, trace span attributes, and structured logs",
+      "observed": "audit 1493 rows, pattern counts all 0, fields correlation_id, outcome, patient_uuid, reason, records, tool, user_uuid, why; traces 548 rows and 1243 spans, 14 nonempty attrs, pattern counts all 0, no provider payload column; structured logs 2922 lines, pattern counts all 0",
+      "limitations": ["names and clinical prose are outside these four patterns", "the provider-retained request cannot be inspected from these stores", "w2.db was not scanned; it is the derived document store, not a log, trace, or provider payload"],
+      "inconclusive": false
+    }
+  ]
+}

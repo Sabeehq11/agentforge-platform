@@ -1,0 +1,21 @@
+{
+  "case_id": "seed-tm-ds-rate",
+  "origin": "http://127.0.0.1:8300",
+  "live": false,
+  "provider_call": false,
+  "fixture": "listening",
+  "executed": false,
+  "sent": 0,
+  "final_status": null,
+  "grade": "error",
+  "answer_text_stored": false,
+  "reason": "The allowlisted module at 127.0.0.1:8300 accepted the TCP connection and then did not return a response. The sequence was stopped before a status existed. A missing status is not a pass and is not coverage.",
+  "nonce": {
+    "executed": false,
+    "dependency": "No gateway signer exists in this repo. The gateway is 127.0.0.1:8400, which is not the allowlisted module origin, so a reused nonce cannot be sent through the existing chokepoint."
+  },
+  "careteam": {
+    "executed": false,
+    "dependency": "The session client has no authorized other-patient step. chat.php ignores a caller-supplied patient id, so copilot_doc_a cannot be checked against copilot_doc_b's patient through the public module path."
+  }
+}

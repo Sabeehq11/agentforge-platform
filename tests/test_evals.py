@@ -43,7 +43,7 @@ def approved(max_attacks: int = 1) -> Budget:
 def test_suite_has_three_categories_and_required_fields() -> None:
     cases = load_cases()
     assert {case.category for case in cases} >= {"TM-PI", "TM-EX", "TM-DS"}
-    assert len(cases) == 19
+    assert len(cases) == 26
     for case in cases:
         assert case.exercise in {"boundary", "invariant", "regression_risk"}
         assert case.owasp_id
@@ -834,7 +834,7 @@ def test_clean_results_store(tmp_path: Path) -> None:
     store_results(stored, path)
     payload = json.loads(path.read_text(encoding="utf-8"))
     assert payload["summary"]["pass"] == 0
-    assert payload["summary"]["not_run"] == 19
+    assert payload["summary"]["not_run"] == 26
 
 
 def test_replay_and_response_edges() -> None:

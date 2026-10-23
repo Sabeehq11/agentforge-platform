@@ -212,7 +212,7 @@ def test_wording_in_the_updated_docs() -> None:
         assert "response-claim proxy" in text and "U1 to U5" in text and "neither is a closed row" in text
         assert "constructed facts" in text and "client_verified" in text
     assert "canned reply, not the target" in readme
-    assert "OK 19 cases" in readme
+    assert "OK 26 cases" in readme
     evals_readme = _flat((ROOT / "evals" / "README.md").read_text(encoding="utf-8"))
     assert "H-3 is unmet" not in evals_readme and "does not contain a live result" not in evals_readme
     assert "response-claim proxy" in evals_readme and "closes no PRD requirement" in evals_readme
@@ -257,4 +257,4 @@ def test_no_text_calls_a01_exercised_without_saying_it_is_offline_only() -> None
             continue
         for unit in _units(path.read_text(encoding="utf-8")):
             if re.search(r"\bA01\b", unit) and re.search(r"\bexercised\b", unit, re.IGNORECASE):
-                assert re.search(r"offline|no target outcome|not exercised|not `exercised`", unit, re.IGNORECASE), (path.name, unit)
+                assert re.search(r"offline|no target outcome|not exercised|not `exercised`|stored", unit, re.IGNORECASE), (path.name, unit)

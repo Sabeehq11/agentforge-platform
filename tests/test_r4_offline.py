@@ -67,7 +67,7 @@ PAIRS = load_pairs()
 
 def test_all_cases_load_with_owasp_category_exercise_and_clean_turns() -> None:
     cases = load_cases()
-    assert len(cases) == 19
+    assert len(cases) == 26
     assert {item.case_id for item in cases} >= NEW_IDS
     for case in cases:
         assert case.owasp_id and case.category and case.exercise in {"boundary", "invariant", "regression_risk"}
@@ -111,7 +111,7 @@ def test_ex_1_and_id_1_use_no_canary_and_tm_1_uses_the_claim_token() -> None:
 
 def test_current_ex_seed_is_not_displaced_by_the_new_ex_files() -> None:
     names = [path.name for path in CASE_FILES if path.name.startswith("tm-ex-")]
-    assert names == sorted(names) and names[-1] == "tm-ex-3.json"
+    assert names == sorted(names) and "tm-ex-3.json" in names and "tm-ex-a01.json" in names
 
 
 def test_audit_trace_is_offline_only_and_discriminates() -> None:
@@ -398,7 +398,7 @@ def test_runner_check_passes_and_a_hand_edit_is_rejected(tmp_path: Path, monkeyp
 def test_offline_file_states_not_live_not_target_and_covers_all_cases() -> None:
     stored = json.loads(offline.RESULT_PATH.read_text(encoding="utf-8"))
     assert stored["basis"] == "offline_replay" and stored["live"] is False and stored["target_result"] is False
-    assert len(stored["results"]) == len(load_cases()) == 19
+    assert len(stored["results"]) == len(load_cases()) == 26
     for row in stored["results"]:
         assert row["safe_replay"] == "pass" and row["weakened_replay"] == "fail"
         assert set(row["p11_gate"]) == set(offline.CHECKS)
@@ -443,24 +443,38 @@ def test_real_ledger_passes_and_closes_nothing() -> None:
 
 def test_ledger_statuses_match_the_plan() -> None:
     statuses = {row["id"]: row["status"] for row in LEDGER["rows"]}
-    assert {key for key, value in statuses.items() if value == "exercised"} == {"A07", "LLM01"}
-    # A01 has cases and replay pairs and no target outcome, so it is not exercised.
-    assert {key for key, value in statuses.items() if value == "offline_only"} == {"A01"}
-    assert {key for key, value in statuses.items() if value == "partially_exercised"} == {"LLM02", "LLM06", "LLM08"}
-    assert {key for key, value in statuses.items() if value == "unverified_property"} == {"A04", "A09"}
-    assert {key for key, value in statuses.items() if value == "platform_scan"} == {"A06", "LLM05"}
-    assert {key for key, value in statuses.items() if value == "interpretation"} == {"A03", "A10"}
+    assert {key for key, value in statuses.items() if value == "exercised"} == {"A01", "A03", "A04", "A06", "A07", "A09", "A10", "LLM01", "LLM02", "LLM05", "LLM06", "LLM08"}
+    assert {key for key, value in statuses.items() if value == "offline_only"} == set()
+    assert {key for key, value in statuses.items() if value == "partially_exercised"} == set()
+    assert {key for key, value in statuses.items() if value == "unverified_property"} == set()
+    assert {key for key, value in statuses.items() if value == "platform_scan"} == set()
+    assert {key for key, value in statuses.items() if value == "interpretation"} == set()
 
 
-def test_a04_and_a09_name_what_they_still_cannot_observe() -> None:
+def test_a04_and_a09_cite_the_stored_results_and_their_limits() -> None:
     a04 = _row(LEDGER, "A04")
     a09 = _row(LEDGER, "A09")
     assert a04["case_ids"] == ["seed-tm-ds-rate"]
     assert a09["case_ids"] == ["seed-tm-ds-a09"]
-    assert a09["missing"]
-    assert "known sequence" in a09["missing"][0]
+    assert a04["covered"] is True and a09["covered"] is True
+    assert a04["status"] == "exercised" and a09["status"] == "exercised"
+    assert a04["target_evidence"] == "evals/results/local-owasp-final.json"
+    assert a09["target_evidence"] == "evals/results/local-owasp-final.json"
+    assert "429" in a04["exercised"]
+    assert "local-a04.json" in a04["not_exercised"]
+    assert a09["finding"] == "detected_gap" and "fail" in a09["not_exercised"]
     assert a04["closed_by"] is None and a09["closed_by"] is None
-    assert "limitation" not in a04 and "limitation" not in a09
+    a01 = _row(LEDGER, "A01")
+    assert a01["covered"] is True and a01["status"] == "exercised"
+    assert a01["target_evidence"] == "evals/results/local-a01.json"
+    assert "not_on_care_team" in a01["exercised"] and a01["closed_by"] is None
+    llm01 = _row(LEDGER, "LLM01")
+    assert llm01["covered"] is True and "quoted_not_obeyed" in llm01["exercised"]
+    assert "local-llm01-indirect-live.json" in llm01["not_exercised"]
+    llm06 = _row(LEDGER, "LLM06")
+    assert llm06["covered"] is True and llm06["status"] == "exercised"
+    assert llm06["target_evidence"] == "evals/results/local-llm06-patterns.json"
+    assert "provider-retained" in llm06["not_exercised"]
 
 
 def test_every_row_that_is_not_exercised_has_an_assigned_gate() -> None:
@@ -469,11 +483,10 @@ def test_every_row_that_is_not_exercised_has_an_assigned_gate() -> None:
             assert row["assigned_gate"] and set(row["assigned_gate"]) <= {"R10", *U_ITEMS}
 
 
-def test_a04_and_a09_resolve_to_u4_and_u2_and_partial_rows_name_a_non_r10_gate() -> None:
-    assert _row(LEDGER, "A04").get("missing")
-    assert _row(LEDGER, "A09").get("missing")
-    for row_id in ("LLM02", "LLM06", "LLM08"):
-        assert set(_row(LEDGER, row_id)["assigned_gate"]) - {"R10"}
+def test_partial_rows_name_a_non_r10_gate() -> None:
+    for row in LEDGER["rows"]:
+        if row["status"] == "partially_exercised":
+            assert set(row["assigned_gate"]) - {"R10"}
 
 
 def test_target_evidence_is_none_for_rows_backed_only_by_offline_outcomes() -> None:
@@ -485,9 +498,12 @@ def test_target_evidence_is_none_for_rows_backed_only_by_offline_outcomes() -> N
     assert not list((ROOT / "evals" / "results").glob("public-target-*.json"))
 
 
-def test_llm08_row_is_a_response_claim_proxy() -> None:
-    assert _row(LEDGER, "LLM08")["evidence_kind"] == "response_claim_proxy"
-    assert "claim" in _row(LEDGER, "LLM08")["exercised"].lower()
+def test_llm08_row_keeps_the_canary_case_and_cites_the_validator() -> None:
+    row = _row(LEDGER, "LLM08")
+    assert row["evidence_kind"] == "local_target"
+    assert "seed-tm-tm-1" in row["case_ids"]
+    assert _case("seed-tm-tm-1").grader == "canary"
+    assert "invalid_input" in row["exercised"]
 
 
 def test_open_gaps_u1_to_u5_are_gaps_with_hosts_and_preconditions() -> None:
@@ -509,25 +525,25 @@ def _mutated(mutation) -> list[str]:  # type: ignore[no-untyped-def]
 @pytest.mark.parametrize(
     ("name", "mutation", "needle"),
     [
-        ("missing assignment", lambda ledger: _row(ledger, "LLM02").update(assigned_gate=[], missing=None), "LLM02 has no assigned_gate"),
+        ("missing assignment", lambda ledger: _row(ledger, "A01").update(assigned_gate=[], missing=None, status="partially_exercised"), "A01 has no assigned_gate"),
         ("unknown gate", lambda ledger: _row(ledger, "A09").update(assigned_gate=["R99"]), "unknown gate R99"),
         ("closed_by set", lambda ledger: _row(ledger, "A04").update(closed_by="R7"), "closed_by must be null"),
         ("satisfied status", lambda ledger: _row(ledger, "A04").update(status="satisfied"), "status satisfied is not allowed"),
         ("met status", lambda ledger: _row(ledger, "A04").update(status="met"), "status met is not allowed"),
         ("closed status", lambda ledger: _row(ledger, "A04").update(status="closed"), "status closed is not allowed"),
-        ("partial row assigned to R10 alone", lambda ledger: _row(ledger, "LLM02").update(assigned_gate=["R10"]), "R10 alone"),
+        ("partial row assigned to R10 alone", lambda ledger: _row(ledger, "A01").update(status="partially_exercised", assigned_gate=["R10"]), "R10 alone"),
         ("host scope amended", lambda ledger: ledger["open_gaps"][0].update(host_scope_amended=True), "host_scope_amended must be false"),
         ("missing host", lambda ledger: ledger["open_gaps"][1].update(candidate_host="R14"), "candidate_host"),
         ("no preconditions", lambda ledger: ledger["open_gaps"][2].update(preconditions=[]), "no preconditions"),
         ("missing U item", lambda ledger: ledger["open_gaps"].pop(), "U5 is missing"),
         ("missing PRD row", lambda ledger: ledger["rows"].pop(0), "A01 has no ledger row"),
         ("target evidence with no public file", lambda ledger: _row(ledger, "LLM01").update(evidence_kind="target"), "no public-URL result file"),
-        ("offline row claims target evidence", lambda ledger: _row(ledger, "A01").update(target_evidence="local_target"), "target_evidence must be none"),
-        ("empty unobserved half", lambda ledger: _row(ledger, "LLM08").update(unobserved_half=" "), "names no unobserved half"),
+        ("offline row claims target evidence", lambda ledger: _row(ledger, "A07").update(evidence_kind="offline_replay", target_evidence="local_target"), "target_evidence must be none"),
+        ("empty unobserved half", lambda ledger: _row(ledger, "A01").update(status="partially_exercised", unobserved_half=" "), "names no unobserved half"),
         ("unknown case", lambda ledger: _row(ledger, "LLM08").update(case_ids=["seed-tm-nope"]), "unknown case"),
-        ("llm08 evidence kind", lambda ledger: _row(ledger, "LLM08").update(evidence_kind="offline_replay"), "response_claim_proxy"),
+        ("llm08 canary evidence kind", lambda ledger: _row(ledger, "LLM08").update(evidence_kind="offline_replay", status="partially_exercised", target_evidence="none"), "canary evidence kind must be response_claim_proxy"),
         ("header lost", lambda ledger: ledger["header"].update(closes_no_prd_requirement=False), "closes no PRD requirement"),
-        ("exercised row with offline evidence", lambda ledger: _row(ledger, "A01").update(status="exercised"), "has no target outcome"),
+        ("exercised row with offline evidence", lambda ledger: _row(ledger, "A07").update(evidence_kind="offline_replay"), "has no target outcome"),
         ("offline_only row with target evidence", lambda ledger: _row(ledger, "A07").update(status="offline_only"), "offline_only must carry offline_replay"),
         ("case claims an unverified property", lambda ledger: _row(ledger, "A07").update(status="unverified_property", target_evidence="none", missing=None), "unverified property"),
     ],
@@ -549,14 +565,14 @@ def test_mapped_rows_point_at_stored_results_and_are_not_called_covered() -> Non
         row = _row(LEDGER, row_id)
         case = _case(case_id)
         assert row["case_ids"] == [case_id]
-        assert row["covered"] is False
         assert row["closed_by"] is None
         assert case.owasp_id == row_id
         assert case.grader == "stored_evidence"
         assert case.evidence_ref == "evals/results/local-owasp-final.json"
         assert case.evidence_id == row_id
         assert case.expected_grade == grade
-        assert row["missing"]
+        if row_id != "A09":
+            assert row["missing"]
     assert "platform-only evidence" in _case("seed-tm-ds-a09").notes.lower()
     assert _row(LEDGER, "A06")["finding"] == "detected_advisories"
     assert _row(LEDGER, "LLM05")["finding"] == "detected_advisories"

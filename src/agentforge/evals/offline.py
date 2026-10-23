@@ -339,7 +339,7 @@ def _content_check(case: Case, entry: dict[str, Any] | None) -> str:
 
 
 def _proxy_check(case: Case) -> str:
-    if case.owasp_id != "LLM08":
+    if case.owasp_id != "LLM08" or case.grader != "canary":
         return "n/a"
     turns = "\n".join(case.turns)
     if not case.notes.startswith(PROXY_PREFIX):
@@ -404,7 +404,7 @@ def build_document(cases: tuple[Case, ...], pairs: dict[str, Any]) -> dict[str, 
             "weakened_replay": grade_entry(case, entry["weakened"]) if entry else "error",
             "p11_gate": dict(verdict.checks),
         }
-        if case.owasp_id == "LLM08":
+        if case.owasp_id == "LLM08" and case.grader == "canary":
             row["evidence_kind"] = "response_claim_proxy"
         rows.append(row)
     return {**HEADER, "results": rows}

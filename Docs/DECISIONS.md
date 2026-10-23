@@ -174,7 +174,7 @@ satisfies a sentence. No code, config or test was changed to record them.
   dataset."
 - **Reading.** We read the R4 ledger [`evals/owasp_coverage.json`](../evals/owasp_coverage.json) as a coverage record.
   A06 and LLM05 are platform scans, A10 is a code reading, and A03 is narrowed to prompt injection. A09 and A04 are
-  unverified properties. A01 is offline only, with no target outcome. LLM02, LLM06 and LLM08 are partially exercised,
+  unverified properties. A01 cites the stored CareTeam denial and is not a closed row. LLM06 cites the stored four-pattern count and is not a closed row. LLM02 and LLM08 are partially exercised,
   and the LLM08 case is a response-claim proxy.
 - **Evidence that exists today.** The ledger, the 11 cases, `evals/results/offline-latest.json` and
   `tests/test_r4_offline.py`.

@@ -1,0 +1,20 @@
+{
+  "pin": "9f036541cf95e896db065e0c652afb75627b03c2",
+  "billable_contact": false,
+  "secrets_stored": false,
+  "patient_data_changed": false,
+  "provider_calls": 0,
+  "chat_sent": false,
+  "payload_stored": false,
+  "results": [
+    {
+      "id": "LLM02-dock",
+      "grade": "pass",
+      "target": "deployed-dock",
+      "method": "deployed copilot.js loaded by one local page; fetch replaced before submit; one synthetic answer event; no chat or provider call",
+      "observed": "fetch_url /synthetic-chat; claim_text_equals_payload true; active_elements 0; alerts 0",
+      "limitations": ["the source-page content policy was not observed", "this is not a public-target result"],
+      "inconclusive": false
+    }
+  ]
+}
