@@ -4,6 +4,7 @@
 !.env.example
 config/operator_approval.yaml
 config/allowlist.local.yaml
+config/budget.local.yaml
 config/live.local
 config/isolated-target.pem
 *.db

@@ -26,7 +26,8 @@ from agentforge.evals.loadtest import (  # noqa: E402
     report_destination,
     write_report,
 )
-from agentforge.safety.chokepoint import LIVE_ENABLED  # noqa: E402
+from agentforge.local_env import load_local_env  # noqa: E402
+from agentforge.safety.chokepoint import LIVE_ENABLED, apply_runtime_opt_in  # noqa: E402
 
 
 def _flag(argv: list[str], name: str) -> str:
@@ -56,14 +57,58 @@ def refusal(argv: list[str], *, live_enabled: bool) -> str | None:
     return None
 
 
+def _caps():
+    """Committed caps, with a gitignored attack-count overlay. Dollar ceilings stay in the committed file."""
+    from agentforge.safety.budget import Caps, load_caps
+
+    caps = load_caps(ROOT / "config" / "budget.yaml")
+    overlay = ROOT / "config" / "budget.local.yaml"
+    try:
+        data = __import__("yaml").safe_load(overlay.read_text(encoding="utf-8"))
+    except (OSError, __import__("yaml").YAMLError):
+        return caps
+    attacks = data.get("max_attacks_per_run") if isinstance(data, dict) else None
+    if not isinstance(attacks, int) or isinstance(attacks, bool) or attacks < caps.max_attacks_per_run:
+        return caps
+    return Caps(
+        caps.per_run_usd,
+        caps.per_day_usd,
+        attacks,
+        caps.hard_ceiling_per_run_usd,
+        caps.hard_ceiling_per_day_usd,
+    )
+
+
+def _allowlist(origin: str):
+    """Reviewed entries, plus the isolated loopback port when that origin was requested."""
+    from urllib.parse import urlsplit
+
+    from agentforge.safety.allowlist import Allowlist, Entry
+
+    listed = Allowlist.from_file(ROOT / "config" / "allowlist.yaml", local=ROOT / "config" / "allowlist.local.yaml")
+    parts = urlsplit(origin.rstrip("/"))
+    if parts.scheme == "https" and parts.hostname == "127.0.0.1" and parts.port == 19300:
+        return Allowlist((*listed.entries, Entry("https", "127.0.0.1", 19300, "/")))
+    return listed
+
+
+def _fixture_credentials() -> tuple[str | None, str | None]:
+    """Existing fixture names. The password is returned to the client and is not printed."""
+    import os
+
+    username = os.environ.get("COPILOT_FIXTURE_USER") or os.environ.get("AGENTFORGE_FIXTURE_USER")
+    password = os.environ.get("COPILOT_FIXTURE_PASSWORD") or os.environ.get("AGENTFORGE_FIXTURE_PASSWORD")
+    return username, password
+
+
 def offline(argv: list[str]) -> int:
     """Print local pass/fail names. Exits before a socket, including when the live switch is true."""
     import os
 
     from agentforge.evals.loadtest import offline_preflight
     from agentforge.store.migrate import migrate
-    from agentforge.safety.allowlist import Allowlist
-    from agentforge.safety.budget import load_caps
+
+    load_local_env(ROOT / ".env")
     from agentforge.safety.chokepoint import PROVIDER_ENABLED
 
     if LIVE_ENABLED:
@@ -86,11 +131,11 @@ def offline(argv: list[str]) -> int:
         pin=_flag(argv, "--pin"),
         pid=_flag(argv, "--pid"),
         revision_dir=_flag(argv, "--revision-dir"),
-        caps=load_caps(ROOT / "config" / "budget.yaml"),
-        allowlist=Allowlist.from_file(ROOT / "config" / "allowlist.yaml"),
+        caps=_caps(),
+        allowlist=_allowlist(_flag(argv, "--origin")),
         secret_set=bool(os.environ.get("AGENTFORGE_BUDGET_SECRET")),
         token_set=bool(os.environ.get("AGENTFORGE_BUDGET_TOKEN")),
-        password_set=bool(os.environ.get("COPILOT_FIXTURE_PASSWORD")),
+        password_set=bool(os.environ.get("COPILOT_FIXTURE_PASSWORD") or os.environ.get("AGENTFORGE_FIXTURE_PASSWORD")),
         store_ready=store_ready,
     )
     for name, ok in checks:
@@ -99,8 +144,10 @@ def offline(argv: list[str]) -> int:
 
 
 def main(argv: list[str]) -> int:
-    """Refuse before a client while the source switch is false. Does not set LIVE_ENABLED."""
-    reason = refusal(argv, live_enabled=LIVE_ENABLED)
+    """Refuse before a client unless the gitignored opt-in is present. Does not edit a committed switch."""
+    load_local_env(ROOT / ".env")
+    enabled = apply_runtime_opt_in(path=ROOT / "config" / "live.local") if "--live" in argv else LIVE_ENABLED
+    reason = refusal(argv, live_enabled=enabled)
     if reason:
         print(f"refused: {reason}", file=sys.stderr)
         return 2
@@ -112,11 +159,10 @@ def main(argv: list[str]) -> int:
     pid = _flag(argv, "--pid")
     revision_dir = _flag(argv, "--revision-dir")
     from agentforge.evals.session import SessionClient, real_transport
-    from agentforge.safety.allowlist import Allowlist
-    from agentforge.safety.budget import Budget, approval_token, load_caps
+    from agentforge.safety.budget import Budget, approval_token
     from agentforge.safety.rate import RateCap
 
-    caps = load_caps(ROOT / "config" / "budget.yaml")
+    caps = _caps()
     if caps.max_attacks_per_run < CASES:
         print("refused: attack cap is below 100", file=sys.stderr)
         return 2
@@ -139,13 +185,15 @@ def main(argv: list[str]) -> int:
     client = SessionClient(
         origin,
         transport=real_transport,
-        allowlist=Allowlist.from_file(ROOT / "config" / "allowlist.yaml"),
+        allowlist=_allowlist(origin),
         budget=budget,
         attestations=[],
         today=date.today(),
         rate_cap=RateCap(rate_cap_for(CASES)),
         chat_reserve_usd=0.0,
         fake_transport=False,
+        fixture_username=_fixture_credentials()[0],
+        fixture_password=_fixture_credentials()[1],
     )
     try:
         report = execute(client, conn, pin=pin, fixture_pid=pid, approved_cases=approved, revision_dir=revision_dir)
@@ -158,11 +206,10 @@ def main(argv: list[str]) -> int:
 def probe(argv: list[str]) -> int:
     """One chat. Prints latency_ms=missing or latency_ms=<number>. Does not write the D-13 report."""
     from agentforge.evals.session import SessionClient, real_transport
-    from agentforge.safety.allowlist import Allowlist
-    from agentforge.safety.budget import Budget, approval_token, load_caps
+    from agentforge.safety.budget import Budget, approval_token
     from agentforge.safety.rate import RateCap
 
-    caps = load_caps(ROOT / "config" / "budget.yaml")
+    caps = _caps()
     if caps.max_attacks_per_run < 1:
         print("refused: attack cap is below 1", file=sys.stderr)
         return 2
@@ -176,13 +223,15 @@ def probe(argv: list[str]) -> int:
     client = SessionClient(
         _flag(argv, "--origin"),
         transport=real_transport,
-        allowlist=Allowlist.from_file(ROOT / "config" / "allowlist.yaml"),
+        allowlist=_allowlist(_flag(argv, "--origin")),
         budget=budget,
         attestations=[],
         today=date.today(),
         rate_cap=RateCap(rate_cap_for(1)),
         chat_reserve_usd=0.0,
         fake_transport=False,
+        fixture_username=_fixture_credentials()[0],
+        fixture_password=_fixture_credentials()[1],
     )
     try:
         line = probe_one_chat(

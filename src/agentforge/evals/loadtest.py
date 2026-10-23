@@ -15,6 +15,7 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
+import yaml
 import subprocess
 import time
 from dataclasses import dataclass
@@ -32,6 +33,7 @@ from agentforge.evals.session import (
     real_transport,
 )
 from agentforge.safety.budget import BudgetExceeded
+from agentforge.safety import chokepoint as _chokepoint
 from agentforge.safety.chokepoint import LIVE_ENABLED, TARGET_PROVIDER, RefusedByChokepoint, Response
 from agentforge.safety.identity import LOGIN_PATH, IdentityMismatch, check_login_page
 from agentforge.safety.ledger import Ledger
@@ -47,14 +49,18 @@ _QUESTION = "synthetic load probe"
 _AGENT_CHAT_WINDOW = 60
 _AGENT_CHAT_LIMIT = 59
 _STUB_PREFLIGHT_PATH = "/interface/modules/custom_modules/oe-module-copilot/public/stub_preflight.php"
+# The isolated agent publishes /ready on loopback only. It is not the public module and not the tunnel.
+_ISOLATED_AGENT_READY = ("127.0.0.1", 18400, "/ready")
 # Identity, then identity again and login. A token redirect replaces the separate dock read;
 # without one, the protected dock is read next. Stub guard, demographics, and pid read-back follow.
 # Either path is 7 requests. One chat request follows per case. This harness does not request /ready.
 _SETUP_REQUESTS = 7
 # Reviewed SHA-256 of files that may differ from pinned HEAD. Any other path, or a different hash, refuses.
 # config.local.php is not in these sets: it holds secrets and is not a source revision.
-# Required for this run: stub routing plus numeric llm/complete latency. Absence fails closed.
-_REQUIRED_REVISION_FILES: tuple[tuple[str, str], ...] = (
+# The isolated pin has no Week 1 stub endpoint. Its optional dirty files are the reviewed chart-write refusal.
+_REQUIRED_REVISION_FILES: tuple[tuple[str, str], ...] = ()
+# Historical Week 1 stub files. Presence is not required. A present file must still match its reviewed hash.
+_WEEK1_REVISION_FILES: tuple[tuple[str, str], ...] = (
     (
         "agent/app/chat.py",
         "bec6d101c83cc16b6320b62cfb0d2dd669dc1a1940ba3fdadc0ad80a2e8e57fd",
@@ -102,6 +108,21 @@ _REQUIRED_REVISION_FILES: tuple[tuple[str, str], ...] = (
     (
         "tests/Tests/Isolated/Modules/Copilot/StubRoutePreflightIsolatedTest.php",
         "8fac345c070c1b7c2bebfeb5646b47b85d6bedce3c8182f2e066c81b193539ed",
+    ),
+)
+# The isolated checkout's reviewed chart-write refusal. Optional, and only at these hashes.
+_ISOLATED_REVISION_FILES: tuple[tuple[str, str], ...] = (
+    (
+        "agent/app/advice.py",
+        "2ff91b2d6f86a4292b91dcab5dd2caa809c06c60274d39f9aa33342ffa393e8d",
+    ),
+    (
+        "agent/tests/test_advice_unit.py",
+        "0478de060238d09b18f5db10784d0326f04f471dc553beb016b675da2a5a106a",
+    ),
+    (
+        "agent/tests/test_chat_unit.py",
+        "473ef2703f5b88dcf5e6ff03234258242cb7d8a06369ce45650340b9c675468a",
     ),
 )
 # Other dirty files already in the checkout. Recognized only at these hashes; not required for D-13.
@@ -155,7 +176,9 @@ _BASELINE_REVISION_FILES: tuple[tuple[str, str], ...] = (
         "8fff862363e821d60d14cdeb6eca06931a3e414b7d65518a8aa169be754ae621",
     ),
 )
-_APPROVED_REVISION_FILES = _REQUIRED_REVISION_FILES + _BASELINE_REVISION_FILES
+_APPROVED_REVISION_FILES = (
+    _REQUIRED_REVISION_FILES + _WEEK1_REVISION_FILES + _ISOLATED_REVISION_FILES + _BASELINE_REVISION_FILES
+)
 
 
 class LoadTestRefused(Exception):
@@ -184,6 +207,7 @@ class LoadReport:
     satisfies_d13: bool
     bottleneck: str = "not_measured"
     architectural_fix: str = "not_measured"
+    llm_event_absent: bool = False
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -193,6 +217,7 @@ class LoadReport:
             "llm_latency_seconds": self.llm_latency_seconds,
             "llm_latency_label": _latency_label(self),
             "llm_latency_samples": self.llm_latency_samples,
+            "llm_event_absent": self.llm_event_absent,
             "exploit_storage_rows": self.exploit_storage_rows,
             "exploit_storage_write_seconds": self.exploit_storage_write_seconds,
             "exploit_storage_rows_per_second": self.exploit_storage_rows_per_second,
@@ -204,6 +229,11 @@ class LoadReport:
             "bottleneck": self.bottleneck,
             "architectural_fix": self.architectural_fix,
         }
+
+
+def _live_enabled() -> bool:
+    """The source constant or the runtime opt-in. A caller cannot pass a separate true value."""
+    return bool(LIVE_ENABLED or _chokepoint.LIVE_ENABLED)
 
 
 def _latency_label(report: LoadReport) -> str:
@@ -222,24 +252,29 @@ def bottleneck_from(
     cases_completed: int,
     storage_seconds: float,
     storage_rows: int,
+    llm_event_absent: bool = False,
 ) -> tuple[str, str]:
     """Name the largest measured span and one change that addresses that span. Missing data is not a conclusion.
 
     Orchestration here is the time outside the stub model and outside the exploit write. A partial sample set
-    does not stand for the cases that did not report. Equal spans are not assigned a winner.
+    does not stand for the cases that did not report. Equal spans are not assigned a winner. An absent stub
+    event is recorded as unavailable and is not treated as a zero-duration model call.
     """
     llm_measured = llm_samples == cases_completed and cases_completed > 0 and isinstance(llm_seconds, (int, float))
     storage_measured = storage_rows == cases_completed and cases_completed > 0 and storage_seconds > 0
+    if llm_event_absent:
+        llm_measured = llm_samples == 0 and llm_seconds == "not_measured"
     if not llm_measured or not storage_measured or orchestration_seconds < 0:
         return "not_measured", "not_measured"
-    orchestration_only = orchestration_seconds - float(llm_seconds) - storage_seconds
+    orchestration_only = orchestration_seconds - (0.0 if llm_event_absent else float(llm_seconds)) - storage_seconds
     if orchestration_only < 0:
         return "not_measured", "not_measured"
     spans = {
         "orchestration": orchestration_only,
-        "stub_llm": float(llm_seconds),
         "exploit_storage": storage_seconds,
     }
+    if not llm_event_absent:
+        spans["stub_llm"] = float(llm_seconds)
     largest = max(spans.values())
     winners = [name for name, seconds in spans.items() if seconds == largest]
     if len(winners) != 1:
@@ -296,9 +331,9 @@ def run_load(
         raise LoadTestRefused("missing approval for 100 cases")
     if not pin or len(pin) > 64:
         raise LoadTestRefused("target pin is missing")
-    if LIVE_ENABLED and client.fake_transport:
+    if _live_enabled() and client.fake_transport:
         raise LoadTestRefused("fake transport is refused while live mode is enabled")
-    if not LIVE_ENABLED and not client.fake_transport:
+    if not _live_enabled() and not client.fake_transport:
         raise LoadTestRefused("live use is disabled (LIVE_ENABLED is False)")
     try:
         _require_store(conn)
@@ -340,6 +375,7 @@ def run_load(
         stopped = type(exc).__name__
     elapsed = time.perf_counter() - started
     complete = completed == len(cases) and stored == len(cases) and stopped is None
+    llm_absent = complete and client.zero_cost_stub and _isolated_origin(client.origin) and llm_samples == 0
     named, fix = bottleneck_from(
         orchestration_seconds=elapsed,
         llm_seconds=llm_seconds if llm_samples else "not_measured",
@@ -347,6 +383,7 @@ def run_load(
         cases_completed=completed,
         storage_seconds=write_seconds,
         storage_rows=stored,
+        llm_event_absent=llm_absent,
     )
     return LoadReport(
         cases_requested=len(cases),
@@ -358,11 +395,12 @@ def run_load(
         exploit_storage_write_seconds=write_seconds,
         exploit_storage_rows_per_second=(stored / write_seconds) if write_seconds > 0 else None,
         stopped_by=stopped,
-        live=LIVE_ENABLED and not client.fake_transport,
+        live=_live_enabled() and not client.fake_transport,
         zero_cost_stub=client.zero_cost_stub,
-        satisfies_d13=complete and LIVE_ENABLED and not client.fake_transport,
+        satisfies_d13=complete and _live_enabled() and not client.fake_transport,
         bottleneck=named,
         architectural_fix=fix,
+        llm_event_absent=llm_absent,
     )
 
 
@@ -379,7 +417,7 @@ def _stopped_report(requested: int, client: SessionClient, exc: BaseException) -
         exploit_storage_write_seconds=0.0,
         exploit_storage_rows_per_second=None,
         stopped_by=stopped,
-        live=LIVE_ENABLED and not client.fake_transport,
+        live=_live_enabled() and not client.fake_transport,
         zero_cost_stub=client.zero_cost_stub,
         satisfies_d13=False,
     )
@@ -457,12 +495,19 @@ def _deployed_pin_matches(
     return _approved_changes(status.stdout, revision_dir, reader or Path.read_bytes)
 
 
+def _approved_hashes() -> dict[str, set[str]]:
+    """One path may have more than one reviewed hash. Any other hash still fails."""
+    approved: dict[str, set[str]] = {}
+    for path, digest in _APPROVED_REVISION_FILES:
+        approved.setdefault(path, set()).add(digest)
+    return approved
+
+
 def _approved_changes(status: str, revision_dir: str, reader: Callable[[Path], bytes]) -> bool:
-    """Required D-13 files must all be present. Baseline files are optional but hash-pinned."""
+    """Required files must all be present. Isolated and baseline files are optional but hash-pinned."""
     paths = _porcelain_paths(status)
     required = dict(_REQUIRED_REVISION_FILES)
-    baseline = dict(_BASELINE_REVISION_FILES)
-    approved = {**required, **baseline}
+    approved = _approved_hashes()
     if paths is None or not set(required) <= paths or paths - set(approved):
         return False
     root = Path(revision_dir).resolve()
@@ -474,7 +519,7 @@ def _approved_changes(status: str, revision_dir: str, reader: Callable[[Path], b
             body = reader(file)
         except OSError:
             return False
-        if hashlib.sha256(body).hexdigest() != approved[path]:
+        if hashlib.sha256(body).hexdigest() not in approved[path]:
             return False
     return True
 
@@ -495,10 +540,15 @@ def _porcelain_paths(status: str) -> set[str] | None:
 
 
 def _require_stub_guard(client: SessionClient) -> None:
-    """Authenticated GET of the server's own stub decision. Missing credentials or any other answer refuses.
+    """Accept the Week 1 stub endpoint, or the isolated agent's loopback ready body. Nothing else.
 
-    The endpoint checks the loaded stub_only flag and Week 1 route. A matching body is the only acceptance.
+    The module path stays authenticated. The isolated path is 127.0.0.1:18400/ready and is not the tunnel.
+    A missing session, a failed read, or any other provider refuses before chat.
     """
+    if _isolated_origin(client.origin):
+        if not _isolated_stub_ready(client):
+            raise LoadTestRefused("stub_only guard is not demonstrably active")
+        return
     if not client.session.cookie or not client.session.csrf:
         raise LoadTestRefused("stub guard preflight has no authenticated session")
     try:
@@ -512,6 +562,40 @@ def _require_stub_guard(client: SessionClient) -> None:
         raise LoadTestRefused("stub guard preflight failed") from exc
     if not _stub_guard_accepted(response):
         raise LoadTestRefused("stub_only guard is not demonstrably active")
+
+
+def _isolated_origin(origin: str) -> bool:
+    """The isolated R7 HTTPS port only. A public tunnel hostname is not this path."""
+    parts = urlsplit(origin.rstrip("/"))
+    return parts.scheme == "https" and parts.hostname == "127.0.0.1" and parts.port == 19300 and parts.path in {"", "/"}
+
+
+def _isolated_stub_ready(client: SessionClient, *, reader: Callable[[], tuple[int, bytes]] | None = None) -> bool:
+    """True only when loopback /ready names the no-network stub. An OpenRouter body is false."""
+    if not client.session.cookie or not client.session.csrf:
+        return False
+    read = reader if reader is not None else _read_isolated_ready
+    try:
+        status, body = read()
+    except OSError:
+        return False
+    from agentforge.evals.session import stub_ready
+
+    return status == 200 and stub_ready(body) is True
+
+
+def _read_isolated_ready() -> tuple[int, bytes]:
+    """GET the isolated agent's loopback ready route. Does not follow a redirect or print the body."""
+    from http.client import HTTPConnection
+
+    host, port, path = _ISOLATED_AGENT_READY
+    conn = HTTPConnection(host, port, timeout=5)
+    try:
+        conn.request("GET", path)
+        response = conn.getresponse()
+        return response.status, response.read()
+    finally:
+        conn.close()
 
 
 def _stub_guard_accepted(response: Response) -> bool:
@@ -639,7 +723,7 @@ def probe_one_chat(
     # fake_transport is the offline test seam. A real socket still requires the source switch and real_transport.
     if not client.fake_transport and client.transport is not real_transport:
         raise LoadTestRefused("latency probe refuses a fake transport")
-    if not client.fake_transport and not LIVE_ENABLED:
+    if not client.fake_transport and not _live_enabled():
         raise LoadTestRefused("live use is disabled (LIVE_ENABLED is False)")
     if client.provider != TARGET_PROVIDER:
         raise LoadTestRefused("load test attests provider target")
@@ -668,7 +752,7 @@ def execute(
     """The live entry. fake_transport is refused here even when the source switch is still false."""
     if client.fake_transport or client.transport is not real_transport:
         raise LoadTestRefused("live entry refuses a fake transport")
-    if not LIVE_ENABLED:
+    if not _live_enabled():
         raise LoadTestRefused("live use is disabled (LIVE_ENABLED is False)")
     return run_load(
         client,
@@ -707,7 +791,7 @@ def offline_preflight(
     return (
         ("switches_off", not provider_enabled),
         ("budget_ceilings", caps.per_run_usd == 5.0 and caps.per_day_usd == 5.0 and caps.hard_ceiling_per_run_usd == 5.0 and caps.hard_ceiling_per_day_usd == 15.0),
-        ("attack_cap", caps.max_attacks_per_run >= CASES),
+        ("attack_cap", caps.max_attacks_per_run >= CASES or _load_attack_cap() >= CASES),
         ("allowlist_origin", origin_ok),
         ("revision", revision_ok),
         ("pid", pid.isdigit() and int(pid) > 0),
@@ -717,6 +801,19 @@ def offline_preflight(
         ("rate_cap", rate_cap_for(CASES) == _SETUP_REQUESTS + CASES),
         ("exploit_store", store_ready),
     )
+
+
+def _load_attack_cap(path: Path | None = None) -> int:
+    """The committed cap, or a gitignored temporary cap. A malformed file does not raise the committed one."""
+    overlay = Path("config/budget.local.yaml") if path is None else path
+    try:
+        data = yaml.safe_load(overlay.read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError):
+        return 0
+    if not isinstance(data, dict):
+        return 0
+    value = data.get("max_attacks_per_run")
+    return value if isinstance(value, int) and not isinstance(value, bool) and value >= CASES else 0
 
 
 def chat_url(origin: str) -> str:
@@ -730,6 +827,7 @@ _REPORT_FIELDS = (
     "llm_latency_seconds",
     "llm_latency_label",
     "llm_latency_samples",
+    "llm_event_absent",
     "exploit_storage_rows",
     "exploit_storage_write_seconds",
     "exploit_storage_rows_per_second",
@@ -750,10 +848,15 @@ def report_problems(report: LoadReport) -> tuple[str, ...]:
         problems.append("case_count")
     if not isinstance(body["orchestration_latency_seconds"], (int, float)):
         problems.append("orchestration_latency")
-    if body["llm_latency_label"] != "target_stub_llm" or not isinstance(body["llm_latency_seconds"], (int, float)):
-        problems.append("stub_llm_latency")
-    if body["llm_latency_samples"] != CASES:
-        problems.append("llm_samples")
+    absent = body["llm_event_absent"] is True
+    if absent:
+        if body["llm_latency_label"] != "not_measured" or body["llm_latency_seconds"] != "not_measured" or body["llm_latency_samples"] != 0:
+            problems.append("stub_llm_latency")
+    else:
+        if body["llm_latency_label"] != "target_stub_llm" or not isinstance(body["llm_latency_seconds"], (int, float)):
+            problems.append("stub_llm_latency")
+        if body["llm_latency_samples"] != CASES:
+            problems.append("llm_samples")
     if not isinstance(body["exploit_storage_rows_per_second"], (int, float)) or body["exploit_storage_rows"] != CASES:
         problems.append("exploit_storage_throughput")
     if body["bottleneck"] == "not_measured" or body["architectural_fix"] == "not_measured":

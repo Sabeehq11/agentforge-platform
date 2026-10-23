@@ -18,7 +18,9 @@ from agentforge.evals.loadtest import (
     CASES,
     _APPROVED_REVISION_FILES,
     _BASELINE_REVISION_FILES,
+    _ISOLATED_REVISION_FILES,
     _REQUIRED_REVISION_FILES,
+    _WEEK1_REVISION_FILES,
     LoadReport,
     LoadTestRefused,
     _require_stub_guard,
@@ -382,7 +384,10 @@ class _Git:
 
 def test_deployed_pin_requires_d13_files_and_pins_baseline(monkeypatch: pytest.MonkeyPatch) -> None:
     assert set(dict(_REQUIRED_REVISION_FILES)) & set(dict(_BASELINE_REVISION_FILES)) == set()
-    assert len(_APPROVED_REVISION_FILES) == len(_REQUIRED_REVISION_FILES) + len(_BASELINE_REVISION_FILES)
+    assert set(dict(_WEEK1_REVISION_FILES)) & set(dict(_ISOLATED_REVISION_FILES)) == {"agent/tests/test_chat_unit.py"}
+    assert len(_APPROVED_REVISION_FILES) == (
+        len(_REQUIRED_REVISION_FILES) + len(_WEEK1_REVISION_FILES) + len(_ISOLATED_REVISION_FILES) + len(_BASELINE_REVISION_FILES)
+    )
     bodies = {path: digest.encode() for path, digest in _APPROVED_REVISION_FILES}
 
     def read(path: Path) -> bytes:
@@ -413,11 +418,11 @@ def test_deployed_pin_requires_d13_files_and_pins_baseline(monkeypatch: pytest.M
         _Git(dirty=_approved_status() + "?? unexpected/path.py\n"),
     )
     assert _deployed_pin_matches(PIN, "reviewed-checkout", reader=read) is False
-    missing = _status(tuple(item for item in _REQUIRED_REVISION_FILES if item[0] != "agent/app/chat.py"))
+    missing = _status(tuple(item for item in _WEEK1_REVISION_FILES if item[0] != "agent/app/chat.py"))
     monkeypatch.setattr("agentforge.evals.loadtest.subprocess.run", _Git(dirty=missing))
-    assert _deployed_pin_matches(PIN, "reviewed-checkout", reader=read) is False
+    assert _deployed_pin_matches(PIN, "reviewed-checkout", reader=read) is True
     monkeypatch.setattr("agentforge.evals.loadtest.subprocess.run", _Git(dirty=""))
-    assert _deployed_pin_matches(PIN, "reviewed-checkout") is False
+    assert _deployed_pin_matches(PIN, "reviewed-checkout") is True
 
 
 def test_deployed_pin_matches_only_a_reviewed_full_revision(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -425,7 +430,7 @@ def test_deployed_pin_matches_only_a_reviewed_full_revision(monkeypatch: pytest.
     monkeypatch.setattr("agentforge.evals.loadtest.subprocess.run", git)
     assert _deployed_pin_matches(PIN, "reviewed-checkout") is True
     monkeypatch.setattr("agentforge.evals.loadtest.subprocess.run", _Git(dirty=""))
-    assert _deployed_pin_matches(PIN, "reviewed-checkout") is False
+    assert _deployed_pin_matches(PIN, "reviewed-checkout") is True
     monkeypatch.setattr("agentforge.evals.loadtest.subprocess.run", git)
     assert all(args[1] == "-C" and args[2] == "reviewed-checkout" for args in git.calls)
     assert _deployed_pin_matches("9f036541cf95e896db065e0c652afb75627b03c2", "reviewed-checkout") is True
@@ -529,6 +534,60 @@ def test_stub_preflight_requires_exact_fields_and_reuses_session(monkeypatch: py
     assert report.cases_completed == 0
     assert report.stopped_by == "stub guard preflight failed"
     assert broken.chats == 0
+
+
+def _isolated_client(target: FakeTarget) -> SessionClient:
+    client = SessionClient(
+        "https://127.0.0.1:19300",
+        transport=target,
+        allowlist=Allowlist((Entry("https", "127.0.0.1", 19300, "/"),)),
+        budget=_budget(1),
+        attestations=[Attestation("target", "target-key", 10.0, "someone", TODAY)],
+        today=TODAY,
+        rate_cap=RateCap(20),
+        chat_reserve_usd=0.0,
+        fake_transport=True,
+        fixture_username="copilot_doc_a",
+        fixture_password="not-a-secret",
+    )
+    return client
+
+
+def test_isolated_stub_without_latency_event_records_not_measured(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("agentforge.evals.loadtest.subprocess.run", _Git(dirty=""))
+    target = _target([answer("refused")])
+    client = _isolated_client(target)
+    monkeypatch.setattr("agentforge.evals.loadtest._read_isolated_ready", lambda: (200, STUB_READY))
+    report = _run(client, _conn(), count=1, approved=1)
+    assert report.cases_completed == 1
+    assert report.llm_event_absent is True
+    assert report.llm_latency_seconds == "not_measured"
+    assert report.llm_latency_samples == 0
+    assert report.as_dict()["llm_latency_label"] == "not_measured"
+    assert "stub_llm_latency" not in report_problems(report)
+    assert report.bottleneck in {"orchestration", "exploit_storage"}
+    public = _run(_client(_target([answer("refused")]), _budget(1), rate=20), _conn(), count=1, approved=1)
+    assert public.llm_event_absent is False
+    assert "stub_llm_latency" in report_problems(public)
+
+
+def test_isolated_ready_accepts_only_the_stub_and_sends_no_module_request(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("agentforge.evals.loadtest.subprocess.run", _Git(dirty=""))
+    target = _target([answer("refused")])
+    client = _isolated_client(target)
+    monkeypatch.setattr("agentforge.evals.loadtest._read_isolated_ready", lambda: (200, STUB_READY))
+    report = _run(client, _conn(), count=1, approved=1)
+    assert report.stopped_by is None
+    assert report.cases_completed == 1
+    assert report.zero_cost_stub is True
+    assert not any("stub_preflight.php" in url for _method, url in target.calls)
+    openrouter = _target([answer("refused")])
+    refused = _isolated_client(openrouter)
+    monkeypatch.setattr("agentforge.evals.loadtest._read_isolated_ready", lambda: (200, CLAUDE_READY))
+    stopped = _run(refused, _conn(), count=1, approved=1)
+    assert stopped.cases_completed == 0
+    assert stopped.stopped_by == "stub_only guard is not demonstrably active"
+    assert openrouter.chats == 0
 
 
 def test_ready_looking_body_does_not_replace_stub_preflight(monkeypatch: pytest.MonkeyPatch) -> None:
