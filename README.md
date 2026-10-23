@@ -42,7 +42,8 @@ only over HTTP. See [TARGET_FREEZE.md](Docs/TARGET_FREEZE.md).
 - **Red Team** (`src/agentforge/agents/red_team_generator.py`): strict model-output validation and a novelty check.
   Tests use a scripted model. `SeedMutator` remains for the P4 path and calls no model.
 - **Model config** (`config/models.yaml`, `src/agentforge/models_config.py`): Red Team and Judge must use different
-  model families. The probe record is [MODEL_PROBE.md](Docs/MODEL_PROBE.md).
+  model families. Orchestrator and Documentation are deterministic and call no model. The probe record is
+  [MODEL_PROBE.md](Docs/MODEL_PROBE.md).
 - **Observability and load** (`src/agentforge/observe/`, `scripts/observe.py`, `scripts/loadtest.py`): the six PRD
   questions, an offline baseline, a stub regression SLO, and a measured D-13 run of 100 of 100 chats on the Week 1
   stub route (`evals/results/d13-load.json`). Orchestration took 90.13541795802303 seconds. Stub LLM latency was

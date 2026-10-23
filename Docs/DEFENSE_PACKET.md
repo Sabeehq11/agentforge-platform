@@ -82,6 +82,6 @@ are `contracts/v1/campaign_request.schema.json`, `attack_result.schema.json`, `v
 - Whether a rotating tunnel URL counts as deployed (Q2). Target reachability is UNVERIFIED in P0.
 - No cohort peer was assigned (Q4). The project is completed independently and remotely. The integration packet is the labeled stub fallback (D-008), not peer integration. X-3 and X-4 stay unmet against the PRD.
 - Provider-side spend limits are not yet attested (Q13). No live run is allowed until they are.
-- Model assignment per role is open (ADR-004). *Superseded in part at P5: the model rationale is in section F of [ARCHITECTURE.md](../ARCHITECTURE.md) and the assignments for the Red Team and Judge are in `config/models.yaml`. The Orchestrator and Documentation models remain `TBD`.*
+- Model assignment per role is decided (ADR-004). The Red Team and Judge assignments are in `config/models.yaml` and were probed. The Orchestrator and Documentation call no model. The rationale is in section F of [ARCHITECTURE.md](../ARCHITECTURE.md).
 
 See also [BUILD_VS_CONFIGURE.md](BUILD_VS_CONFIGURE.md) and the ADRs in [adr/](adr/README.md).

@@ -291,7 +291,8 @@ def test_judge_loads_configured_families() -> None:
     assert judge._model.family == roles["judge"].family
     assert judge._attacker_family == roles["red_team"].family
     assert judge._model.family != judge._attacker_family
-    assert roles["orchestrator"].model == "TBD" and roles["documentation"].model == "TBD"
+    assert roles["orchestrator"].model == "none" and roles["documentation"].model == "none"
+    assert roles["orchestrator"].family == "deterministic" and roles["documentation"].family == "deterministic"
 
 
 def test_labeled_set_metrics_match_the_baseline() -> None:

@@ -39,3 +39,16 @@ Per-role configuration with a same-family check. `config/models.yaml` ships with
 
 - `tests/test_models_config.py` rejects same-family Red Team and Judge.
 - P4: measured refusal rates and Judge precision and recall on a labeled set.
+
+## Addendum (2026-10-23): Orchestrator and Documentation call no model
+
+The original decision left every role unassigned until a probe. The Red Team and Judge were assigned after the
+2026-10-19 probe. The Orchestrator and Documentation are now assigned `provider: none`, `model: none`, and
+`family: deterministic` in `config/models.yaml`.
+
+No probe was run for either role, because neither role calls a model. Refusal does not apply. The token cost is
+zero. The Orchestrator ranks from stored coverage, open findings, and regressions in
+`src/agentforge/orchestrator/priority.py`. The Documentation agent fills a template from a confirmed exploit in
+`src/agentforge/agents/documentation.py`. A commercial model is not used for either role: a ranking error is
+recoverable, and generated report prose could overstate a stored finding. Reopen only if a later change makes one
+of these roles call a model. That change needs its own probe and a reviewed config edit.

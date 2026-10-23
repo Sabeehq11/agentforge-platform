@@ -1,6 +1,6 @@
 # Model probe
 
-Status: measured on 2026-10-19 for `red_team` and `judge` only. `orchestrator` and `documentation` stay `TBD`.
+Status: measured on 2026-10-19 for `red_team` and `judge` only. `orchestrator` and `documentation` are deterministic and were not probed. See the 2026-10-23 addendum in [ADR-004](adr/004-models-per-role.md).
 
 ## Measured run (2026-10-19, after the key limit was raised)
 

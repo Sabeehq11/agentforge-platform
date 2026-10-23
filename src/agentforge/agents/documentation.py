@@ -1,6 +1,6 @@
 """Documentation agent. A template, not a model. It drafts and does not publish.
 
-The model for this role stays TBD. Nothing here calls a provider or the target. The run_logs row
+This role has no model. Nothing here calls a provider or the target. The run_logs row
 uses the campaign correlation id. There is no dispatch-journal role for this agent.
 """
 

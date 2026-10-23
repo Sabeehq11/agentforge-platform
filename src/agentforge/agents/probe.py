@@ -464,7 +464,7 @@ def _report(
 
 
 def apply_measured_models(report: dict[str, object], candidates: Path, models: Path) -> None:
-    """Write measured refusal and USD, then set only red_team and judge. Other roles stay TBD."""
+    """Write measured refusal and USD, then set only red_team and judge. Other roles are left unchanged."""
     rows = report.get("measurements")
     if report.get("status") != "measured" or not isinstance(rows, list) or len(rows) < 2:
         raise ProbeError("measured probe rows are missing")

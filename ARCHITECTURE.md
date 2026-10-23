@@ -18,10 +18,10 @@ Evidence is labeled by what it measured. Three graded cases, one each from promp
 
 | Agent | Role | Inputs | Outputs | Trust level | Model | Status |
 |---|---|---|---|---|---|---|
-| Orchestrator | Choose the next campaign from coverage, findings and regressions | Store reads, budget state | `CampaignRequest` (`contracts/v1/campaign_request.schema.json`) | Trusted to schedule. Never judges or publishes | `TBD` in `config/models.yaml`, rules first | Built, scripted (`src/agentforge/orchestrator/`). Not met on a live run |
+| Orchestrator | Choose the next campaign from coverage, findings and regressions | Store reads, budget state | `CampaignRequest` (`contracts/v1/campaign_request.schema.json`) | Trusted to schedule. Never judges or publishes | none. Deterministic ranking (`config/models.yaml`) | Built, scripted (`src/agentforge/orchestrator/`). Not met on a live run |
 | Red Team | Propose attack sequences within a budget | `CampaignRequest`, seed cases in `evals/cases/` | `AttackResult` (`attack_result.schema.json`) | Untrusted by the Judge. Its claims are never evidence | `openai/gpt-4.1-mini` configured. `SeedMutator` is deterministic and calls no model | Built, partial (`src/agentforge/agents/red_team.py`) |
 | Judge | Decide pass, fail or partial independently | Executor-recorded transcript (`recorded_transcript.schema.json`) | `Verdict` (`verdict.schema.json`) or a draft `ConfirmedExploit` (`confirmed_exploit.schema.json`) | Independent of the Red Team. Output is proposed evidence, not truth | `anthropic/claude-sonnet-4.5`, ambiguous cases only | Built (`src/agentforge/agents/judge.py`) |
-| Documentation | Write a reproducible report from a confirmed exploit | `ConfirmedExploit` | A draft report. Publication is a human act | A draft until a human approves | `TBD` in `config/models.yaml`, template and validation first | Built, stub (`src/agentforge/agents/documentation.py`) |
+| Documentation | Write a reproducible report from a confirmed exploit | `ConfirmedExploit` | A draft report. Publication is a human act | A draft until a human approves | none. Template and validation (`config/models.yaml`) | Built, stub (`src/agentforge/agents/documentation.py`) |
 
 Supporting components, which are not agents:
 - **Built.** The deterministic executor and graders (`src/agentforge/evals/`), the safety chokepoint (`src/agentforge/safety/`), the cost ledger (`src/agentforge/safety/ledger.py`) and the SQLite store (`src/agentforge/store/`).
@@ -143,16 +143,16 @@ PRD basis: models chosen with refusal and cost in mind, and an independent Judge
   - The red_team probe call was refused, at $0.0000228.
   - The judge probe call completed, at $0.000291.
   - Each is one sample per family, not a refusal rate.
-- **Planned.** `orchestrator` and `documentation` stay `TBD`. The intent is rules first, with a model only where a rule cannot decide. No model has been chosen and none is recommended here.
+- **Built.** `orchestrator` and `documentation` are `provider: none`, `model: none`, and `family: deterministic` in `config/models.yaml`. Neither calls a model. The Orchestrator ranks from stored rows (`src/agentforge/orchestrator/priority.py`). Documentation fills a template from a confirmed exploit (`src/agentforge/agents/documentation.py`). No probe was run, because refusal does not apply and the token cost is zero. The decision is the 2026-10-23 addendum in `Docs/adr/004-models-per-role.md`.
 - **Consequence.** `SeedMutator` is deterministic and calls no model. `RedTeamGenerator` accepts scripted model output and has not been run against a provider in a campaign. The recorded red_team refusal remains one sample, not a refusal rate.
 
 ## G. Build-versus-configure justification
 
 PRD basis: a build-versus-configure record for each agent role is required before it is implemented.
 
-- **Built (as a document).** `Docs/BUILD_VS_CONFIGURE.md` evaluates Burp Suite, OWASP ZAP, Semgrep, Garak, promptfoo, PyRIT, commercial red-team platforms and plain deterministic tooling.
-- **Decisions.** Red Team, Judge, Orchestrator and Documentation are custom, because the target is a stateful, session-authenticated, patient-scoped LLM application and the verdicts depend on our own invariants. The deterministic layer is small custom code. Web Top 10 scanning is configured with ZAP, not built. Semgrep is for the platform's own code.
-- **Open.** ZAP has not been run. The P9 self-scan is pytest, mypy, Bandit and pip-audit (`scripts/self_scan.py`), not Semgrep and not a live target scan. The tool claims in the record stay unverified (G-2). This file links the record and does not repeat it.
+- **Built (as a document).** `Docs/BUILD_VS_CONFIGURE.md` evaluates Burp Suite, OWASP ZAP, Semgrep, Garak, promptfoo, PyRIT, one commercial red-team platform and plain deterministic tooling. Each coverage claim cites the official page checked on 2026-10-23.
+- **Decisions.** Red Team, Judge, Orchestrator and Documentation stay custom. The target is a stateful, session-authenticated, patient-scoped application, and the verdicts depend on this platform's own invariants. The deterministic layer is small custom code. None of the named tools is configured as a platform component. The platform self-scan remains pytest, mypy, Bandit and pip-audit (`scripts/self_scan.py`).
+- **Open.** No named tool has been run against the target. Checking a vendor page is not a scan. This file links the record and does not repeat it.
 
 ## H. Scale and concurrency tradeoffs
 
@@ -212,8 +212,8 @@ Every AI role, the check or approval that follows each AI decision, and the risk
 |---|---|---|---|
 | Judge model (`anthropic/claude-sonnet-4.5`) | **Built**, ambiguous transcripts only (`src/agentforge/agents/judge.py`) | Deterministic rules run first. The model sees only the recorded transcript. A confirmed exploit is a draft. A human approves before publication (`src/agentforge/store/records.py`) | Four labeled items support no error rate. A model can be wrong or be steered by transcript text (section I) |
 | Red Team model (`openai/gpt-4.1-mini`) | **Planned** (P6). The probe call exists (`Docs/MODEL_PROBE.md`). `SeedMutator` uses no model | The chokepoint, allowlist, budget and attack cap bound every call. The PHI scan runs before storage. The Judge, not the Red Team, decides success | The model refused the probe. It may refuse offensive tasks or produce harmful text (section J) |
-| Orchestrator model | **Planned** (P6), `TBD`, rules first | Hard caps and the kill switch stop a run regardless of its choice | An LLM planner could loop or chase noise. Its choice is a priority, not a finding |
-| Documentation model | **Planned** (P7), `TBD`, template and validation first | Required-field and uniqueness validation. Human approval for critical and high findings | A fluent report could overstate a finding. A reviewer must reproduce it |
+| Orchestrator | **Built**, not an AI role. Ranking is code (`src/agentforge/orchestrator/priority.py`) | The stored weights and the no-priority fallback decide the next category. Hard caps and the kill switch still stop a run | A ranking error is recoverable. It is a priority, not a finding |
+| Documentation | **Built**, not an AI role. A template copies the confirmed exploit (`src/agentforge/agents/documentation.py`) | Required-field and uniqueness validation. Human approval for critical and high findings | The report can only state what the exploit record stores. A reviewer must still reproduce it |
 | AI coding assistant (development only) | **Built** into how this repo was written | A human reviews and commits. CI runs tests and scans. Docs state unmeasured items as unmeasured | An assistant can write a plausible wrong claim. Checks cover structure and tests, not every sentence |
 
 - **Built.** Models used inside the platform are named in `config/models.yaml` and measured in `Docs/MODEL_PROBE.md`. Their only live use so far is recorded in `evals/results/probe-report.json` and `evals/results/judge-drift.json`.

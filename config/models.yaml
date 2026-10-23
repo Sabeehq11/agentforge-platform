@@ -1,5 +1,6 @@
-# Model per agent role (ADR-004). Placeholders only: no model is chosen or probed in P0, and no key lives here.
+# Model per agent role (ADR-004). No key lives here.
 # red_team and judge must have different `family` values; src/agentforge/models_config.py enforces it.
+# orchestrator and documentation are deterministic. `none` means the role calls no model.
 roles:
   red_team:
     provider: openrouter
@@ -10,10 +11,10 @@ roles:
     model: anthropic/claude-sonnet-4.5
     family: anthropic
   orchestrator:
-    provider: TBD
-    model: TBD
-    family: tbd-orchestrator
+    provider: none
+    model: none
+    family: deterministic
   documentation:
-    provider: TBD
-    model: TBD
-    family: tbd-documentation
+    provider: none
+    model: none
+    family: deterministic
