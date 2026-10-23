@@ -19,8 +19,13 @@ UNVERIFIED = "unverified"
 OUTCOMES = frozenset({CONSISTENT, DIFFERENCE, UNVERIFIED})
 
 # A missing file answers 404 at the pin. These statuses mean something is served at the path.
+# A bare 403 is served, not absent: it can be an application, an auth wall, or a file that exists.
 _PRESENT = frozenset({200, 401, 403, 405})
 _ABSENT = frozenset({404})
+# The pinned module denies every path outside public/ with this rule. A 403 is protected only when
+# the observation names that rule and the path is outside public/. A public/ 403 stays a difference.
+_MODULE = "interface/modules/custom_modules/oe-module-copilot/"
+_DENY_RULE = "module_source_deny"
 
 
 @dataclass(frozen=True)
@@ -87,6 +92,9 @@ def compare_observed(manifest: Manifest, observed: Any) -> PinReport:
     observed is a mapping with `assets` ({path: sha256}) and `negative_controls` ({path: http status}).
     A hash that differs, or a negative-control path that is served, is a `difference`. A missing item, an
     unreadable value or an unexpected status is `unverified`. Only a full, matching observation is consistent.
+
+    A 403 counts as protected, not served, only when the path is outside the module's public/ directory and
+    `source_deny_verified` names the module source-path deny rule. Any other 403 remains a difference.
     """
     if not isinstance(observed, dict):
         return PinReport(UNVERIFIED, ("no observation was supplied",))
@@ -112,6 +120,8 @@ def compare_observed(manifest: Manifest, observed: Any) -> PinReport:
         status = seen_controls.get(path)
         if isinstance(status, bool) or not isinstance(status, int):
             gaps.append(f"negative control {path} was not observed as an HTTP status")
+        elif _source_deny_protects(path, status, observed.get("source_deny_verified")):
+            continue
         elif status in _PRESENT:
             differences.append(
                 f"negative control {path} is served (status {status}) but is absent at the pin"
@@ -127,5 +137,23 @@ def compare_observed(manifest: Manifest, observed: Any) -> PinReport:
         return PinReport(UNVERIFIED, tuple(gaps))
     return PinReport(
         CONSISTENT,
-        ("every observed asset matches and every negative control is absent",),
+        ("every observed asset matches and every negative control is absent or protected",),
     )
+
+
+def _source_deny_protects(path: str, status: int, verified: Any) -> bool:
+    """True only for a 403 on a module source path tied to the module deny rule.
+
+    The manifest records those paths relative to the module (`src/...`). A full module path is accepted too.
+    A `public/` path, a path outside the module, or a 403 without `source_deny_verified` stays served.
+    """
+    if status != 403 or verified != _DENY_RULE or not isinstance(path, str):
+        return False
+    parts = path.split("/")
+    if not path or ".." in parts or "." in parts:
+        return False
+    if "public" in parts:
+        return False
+    relative_source = path.startswith("src/")
+    full_source = path.startswith(_MODULE + "src/")
+    return relative_source or full_source

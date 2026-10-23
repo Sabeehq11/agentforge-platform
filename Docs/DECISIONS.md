@@ -190,7 +190,8 @@ satisfies a sentence. No code, config or test was changed to record them.
   repository or SBOM access, while A03 beyond prompt injection and A10 need a live host. U4 needs a
   documentation-only checkpoint. No cycle has been amended.
 - **Residual risk.** The PRD sentence stays open. LLM06's privacy half is U2 and is not addressed by the D-015 entry.
-- **Will not build.** Any case labeled A09 or A04, or any claim that a ledger row is satisfied.
+- **Will not build.** Any claim that a ledger row is satisfied. The later decision to add offline cases for A04 and
+  A09 does not close either row.
 - **Reopen trigger.** Your decision to add checkpoints for U1 to U5, or a PRD reading that excludes one of them. This
   entry is not that decision.
 - **Requirement rows touched and their status.** M-10 stays `partial`. No U-item has a roadmap checkpoint.

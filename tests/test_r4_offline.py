@@ -65,9 +65,9 @@ PAIRS = load_pairs()
 # ---- the four new cases and the full set -------------------------------------------------------------------
 
 
-def test_all_eleven_cases_load_with_owasp_category_exercise_and_clean_turns() -> None:
+def test_all_cases_load_with_owasp_category_exercise_and_clean_turns() -> None:
     cases = load_cases()
-    assert len(cases) == 11
+    assert len(cases) == 19
     assert {item.case_id for item in cases} >= NEW_IDS
     for case in cases:
         assert case.owasp_id and case.category and case.exercise in {"boundary", "invariant", "regression_risk"}
@@ -91,8 +91,17 @@ def test_new_cases_carry_the_labels_the_ledger_assigns() -> None:
     assert labels["seed-tm-tm-1"] == ("LLM08", "canary")
 
 
-def test_no_case_carries_a09_or_a04() -> None:
-    assert not [item.case_id for item in load_cases() if item.owasp_id in {"A09", "A04"}]
+def test_a04_grades_the_copilot_limit_and_the_platform_cases_are_not_coverage() -> None:
+    labels = {item.case_id: (item.owasp_id, item.grader, item.exercise) for item in load_cases()}
+    assert labels["seed-tm-ds-rate"] == ("A04", "rate_limit", "boundary")
+    assert "60" in _case("seed-tm-ds-rate").expected_safe_behavior
+    assert "platform control" in _case("seed-tm-ds-4").notes.lower()
+    assert "platform control" in _case("seed-tm-ds-audit").notes.lower()
+    assert _row(LEDGER, "A04")["case_ids"] == ["seed-tm-ds-rate"]
+    assert _row(LEDGER, "A09")["case_ids"] == ["seed-tm-ds-a09"]
+    assert "seed-tm-ds-4" not in _row(LEDGER, "A04")["case_ids"]
+    assert "seed-tm-ds-audit" not in _row(LEDGER, "A09")["case_ids"]
+    assert "platform-only" in _case("seed-tm-ds-a09").notes.lower()
 
 
 def test_ex_1_and_id_1_use_no_canary_and_tm_1_uses_the_claim_token() -> None:
@@ -103,6 +112,37 @@ def test_ex_1_and_id_1_use_no_canary_and_tm_1_uses_the_claim_token() -> None:
 def test_current_ex_seed_is_not_displaced_by_the_new_ex_files() -> None:
     names = [path.name for path in CASE_FILES if path.name.startswith("tm-ex-")]
     assert names == sorted(names) and names[-1] == "tm-ex-3.json"
+
+
+def test_audit_trace_is_offline_only_and_discriminates() -> None:
+    from agentforge.evals.graders import grade_audit_trace
+
+    assert "audit_trace" not in executor._CHAT_GRADERS
+    case = _case("seed-tm-ds-audit")
+    assert [item.outcome for item in executor.run_dry((case,))] == ["not_run"]
+    pair = PAIRS["cases"][case.case_id]
+    assert grade_entry(case, pair["safe"]) == "pass"
+    assert grade_entry(case, pair["weakened"]) == "fail"
+    assert grade_audit_trace("") == "error"
+    assert grade_audit_trace("category only") == "fail"
+
+
+def test_rate_limit_grades_a_copilot_refusal_and_not_a_normal_response() -> None:
+    from agentforge.evals.graders import grade_rate_limit
+
+    case = _case("seed-tm-ds-rate")
+    pair = PAIRS["cases"][case.case_id]
+    assert grade_entry(case, pair["safe"]) == "pass"
+    assert grade_entry(case, pair["weakened"]) == "fail"
+    assert grade_rate_limit(sent=59, status=429) == "error"
+    assert grade_rate_limit(sent=61, status=None) == "error"
+
+
+def test_a04_pair_uses_attack_count() -> None:
+    case = _case("seed-tm-ds-4")
+    pair = PAIRS["cases"][case.case_id]
+    assert grade_entry(case, pair["safe"]) == "pass"
+    assert grade_entry(case, pair["weakened"]) == "fail"
 
 
 def test_active_markup_grader_is_offline_only() -> None:
@@ -358,7 +398,7 @@ def test_runner_check_passes_and_a_hand_edit_is_rejected(tmp_path: Path, monkeyp
 def test_offline_file_states_not_live_not_target_and_covers_all_cases() -> None:
     stored = json.loads(offline.RESULT_PATH.read_text(encoding="utf-8"))
     assert stored["basis"] == "offline_replay" and stored["live"] is False and stored["target_result"] is False
-    assert len(stored["results"]) == len(load_cases()) == 11
+    assert len(stored["results"]) == len(load_cases()) == 19
     for row in stored["results"]:
         assert row["safe_replay"] == "pass" and row["weakened_replay"] == "fail"
         assert set(row["p11_gate"]) == set(offline.CHECKS)
@@ -412,21 +452,26 @@ def test_ledger_statuses_match_the_plan() -> None:
     assert {key for key, value in statuses.items() if value == "interpretation"} == {"A03", "A10"}
 
 
-def test_unverified_property_rows_name_what_they_cannot_observe() -> None:
-    for row_id in ("A04", "A09"):
-        row = _row(LEDGER, row_id)
-        assert row["case_ids"] == [] and row["unobserved_half"].strip() and row["not_exercised"].strip()
+def test_a04_and_a09_name_what_they_still_cannot_observe() -> None:
+    a04 = _row(LEDGER, "A04")
+    a09 = _row(LEDGER, "A09")
+    assert a04["case_ids"] == ["seed-tm-ds-rate"]
+    assert a09["case_ids"] == ["seed-tm-ds-a09"]
+    assert a09["missing"]
+    assert "known sequence" in a09["missing"][0]
+    assert a04["closed_by"] is None and a09["closed_by"] is None
+    assert "limitation" not in a04 and "limitation" not in a09
 
 
 def test_every_row_that_is_not_exercised_has_an_assigned_gate() -> None:
     for row in LEDGER["rows"]:
-        if row["status"] != "exercised":
+        if row["status"] != "exercised" and not row.get("missing") and not row.get("verification"):
             assert row["assigned_gate"] and set(row["assigned_gate"]) <= {"R10", *U_ITEMS}
 
 
 def test_a04_and_a09_resolve_to_u4_and_u2_and_partial_rows_name_a_non_r10_gate() -> None:
-    assert _row(LEDGER, "A04")["assigned_gate"] == ["U4"]
-    assert _row(LEDGER, "A09")["assigned_gate"] == ["U2"]
+    assert _row(LEDGER, "A04").get("missing")
+    assert _row(LEDGER, "A09").get("missing")
     for row_id in ("LLM02", "LLM06", "LLM08"):
         assert set(_row(LEDGER, row_id)["assigned_gate"]) - {"R10"}
 
@@ -434,7 +479,8 @@ def test_a04_and_a09_resolve_to_u4_and_u2_and_partial_rows_name_a_non_r10_gate()
 def test_target_evidence_is_none_for_rows_backed_only_by_offline_outcomes() -> None:
     for row in LEDGER["rows"]:
         if row["evidence_kind"] in {"offline_replay", "response_claim_proxy"}:
-            assert row["target_evidence"] == "none"
+            evidence = row["target_evidence"]
+            assert evidence == "none" or str(evidence).startswith("evals/results/")
         assert row["evidence_kind"] != "target"
     assert not list((ROOT / "evals" / "results").glob("public-target-*.json"))
 
@@ -463,7 +509,7 @@ def _mutated(mutation) -> list[str]:  # type: ignore[no-untyped-def]
 @pytest.mark.parametrize(
     ("name", "mutation", "needle"),
     [
-        ("missing assignment", lambda ledger: _row(ledger, "A09").update(assigned_gate=[]), "A09 has no assigned_gate"),
+        ("missing assignment", lambda ledger: _row(ledger, "LLM02").update(assigned_gate=[], missing=None), "LLM02 has no assigned_gate"),
         ("unknown gate", lambda ledger: _row(ledger, "A09").update(assigned_gate=["R99"]), "unknown gate R99"),
         ("closed_by set", lambda ledger: _row(ledger, "A04").update(closed_by="R7"), "closed_by must be null"),
         ("satisfied status", lambda ledger: _row(ledger, "A04").update(status="satisfied"), "status satisfied is not allowed"),
@@ -476,14 +522,14 @@ def _mutated(mutation) -> list[str]:  # type: ignore[no-untyped-def]
         ("missing U item", lambda ledger: ledger["open_gaps"].pop(), "U5 is missing"),
         ("missing PRD row", lambda ledger: ledger["rows"].pop(0), "A01 has no ledger row"),
         ("target evidence with no public file", lambda ledger: _row(ledger, "LLM01").update(evidence_kind="target"), "no public-URL result file"),
-        ("offline row claims target evidence", lambda ledger: _row(ledger, "LLM02").update(target_evidence="local_target"), "target_evidence must be none"),
+        ("offline row claims target evidence", lambda ledger: _row(ledger, "A01").update(target_evidence="local_target"), "target_evidence must be none"),
         ("empty unobserved half", lambda ledger: _row(ledger, "LLM08").update(unobserved_half=" "), "names no unobserved half"),
         ("unknown case", lambda ledger: _row(ledger, "LLM08").update(case_ids=["seed-tm-nope"]), "unknown case"),
         ("llm08 evidence kind", lambda ledger: _row(ledger, "LLM08").update(evidence_kind="offline_replay"), "response_claim_proxy"),
         ("header lost", lambda ledger: ledger["header"].update(closes_no_prd_requirement=False), "closes no PRD requirement"),
         ("exercised row with offline evidence", lambda ledger: _row(ledger, "A01").update(status="exercised"), "has no target outcome"),
         ("offline_only row with target evidence", lambda ledger: _row(ledger, "A07").update(status="offline_only"), "offline_only must carry offline_replay"),
-        ("case claims an unverified property", lambda ledger: _row(ledger, "A01").update(status="unverified_property"), "unverified property"),
+        ("case claims an unverified property", lambda ledger: _row(ledger, "A07").update(status="unverified_property", target_evidence="none", missing=None), "unverified property"),
     ],
 )
 def test_broken_ledger_copies_are_rejected(name: str, mutation, needle: str) -> None:  # type: ignore[no-untyped-def]
@@ -491,12 +537,30 @@ def test_broken_ledger_copies_are_rejected(name: str, mutation, needle: str) -> 
     assert any(needle in item for item in problems), (name, problems)
 
 
-def test_a_case_that_claims_a09_is_rejected() -> None:
-    data = json.loads((ROOT / "evals" / "cases" / "tm-id-1.json").read_text(encoding="utf-8"))
-    data["owasp_id"] = "A09"
-    case = parse_case(data, threat_model=(ROOT / "THREAT_MODEL.md").read_text(encoding="utf-8"))
-    problems = check_ledger(LEDGER, [case, *[item for item in load_cases() if item.case_id != case.case_id]])
-    assert any("A09" in item and "unverified property" in item for item in problems)
+def test_mapped_rows_point_at_stored_results_and_are_not_called_covered() -> None:
+    mapped = {
+        "A03": ("seed-tm-ds-a03", "pass"),
+        "A06": ("seed-tm-ds-a06", "fail"),
+        "A09": ("seed-tm-ds-a09", "fail"),
+        "A10": ("seed-tm-ds-a10", "pass"),
+        "LLM05": ("seed-tm-ds-llm05", "fail"),
+    }
+    for row_id, (case_id, grade) in mapped.items():
+        row = _row(LEDGER, row_id)
+        case = _case(case_id)
+        assert row["case_ids"] == [case_id]
+        assert row["covered"] is False
+        assert row["closed_by"] is None
+        assert case.owasp_id == row_id
+        assert case.grader == "stored_evidence"
+        assert case.evidence_ref == "evals/results/local-owasp-final.json"
+        assert case.evidence_id == row_id
+        assert case.expected_grade == grade
+        assert row["missing"]
+    assert "platform-only evidence" in _case("seed-tm-ds-a09").notes.lower()
+    assert _row(LEDGER, "A06")["finding"] == "detected_advisories"
+    assert _row(LEDGER, "LLM05")["finding"] == "detected_advisories"
+    assert _row(LEDGER, "A09")["finding"] == "detected_gap"
 
 
 def test_an_unknown_grader_is_rejected_by_the_schema() -> None:

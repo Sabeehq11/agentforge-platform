@@ -39,10 +39,13 @@ class Case:
     canary: str | None = None
     fixture: str | None = None
     notes: str = ""
+    evidence_ref: str | None = None
+    evidence_id: str | None = None
+    expected_grade: str | None = None
 
     @property
     def needs_target(self) -> bool:
-        return self.grader != "attack_count"
+        return self.grader not in {"attack_count", "audit_trace", "rate_limit", "stored_evidence"}
 
 
 def _validator() -> Draft202012Validator:
@@ -76,6 +79,8 @@ def parse_case(data: dict[str, Any], *, threat_model: str) -> Case:
         raise CaseRejected("canary grader needs a canary")
     if grader == "canary" and str(data["canary"]) not in "\n".join(turns):
         raise CaseRejected("canary must appear in the input sequence")
+    if grader == "stored_evidence" and not (data.get("evidence_ref") and data.get("evidence_id") and data.get("expected_grade")):
+        raise CaseRejected("stored_evidence grader needs evidence_ref, evidence_id and expected_grade")
     fixture = data.get("fixture")
     if fixture is not None:
         path = EVALS / str(fixture)
@@ -100,6 +105,9 @@ def parse_case(data: dict[str, Any], *, threat_model: str) -> Case:
         canary=str(data["canary"]) if data.get("canary") else None,
         fixture=str(fixture) if fixture else None,
         notes=str(data.get("notes", "")),
+        evidence_ref=str(data["evidence_ref"]) if data.get("evidence_ref") else None,
+        evidence_id=str(data["evidence_id"]) if data.get("evidence_id") else None,
+        expected_grade=str(data["expected_grade"]) if data.get("expected_grade") else None,
     )
 
 

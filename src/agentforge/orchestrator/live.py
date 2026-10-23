@@ -279,9 +279,10 @@ def run_live(
     # process value. Other names still prefer the process, so a shell secret is not overwritten. A caller
     # that passes env is testing that mapping and does not rewrite the process.
     if env is None:
-        # Origin and the budget approval are bound to .env. A leftover shell token must not approve
-        # different cap numbers, and a leftover origin must not retarget the campaign.
-        load_env(root / ".env", override=frozenset({ENV_ORIGIN, ENV_TOKEN, ENV_SECRET}))
+        # Origin, fixture password, and the budget approval are bound to .env. A leftover shell
+        # password must not log in as a different secret, a leftover token must not approve different
+        # cap numbers, and a leftover origin must not retarget the campaign.
+        load_env(root / ".env", override=frozenset({ENV_ORIGIN, ENV_PASSWORD, ENV_TOKEN, ENV_SECRET}))
         values: Mapping[str, str] = os.environ
     else:
         values = env
@@ -394,7 +395,7 @@ def run_live(
         conn.close()
 
 
-LIVE_ONLY_CONFLICTS = ("variant_campaign", "variants", "unpinned", "multi_turn", "trace")
+LIVE_ONLY_CONFLICTS = ("variant_campaign", "variants", "unpinned", "multi_turn", "mutate", "trace")
 
 
 def main_live(

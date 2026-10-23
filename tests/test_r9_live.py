@@ -359,20 +359,23 @@ def test_a_stale_process_origin_or_budget_token_cannot_override_dotenv(
         "AGENTFORGE_TARGET_ORIGIN=https://target.example\n"
         "AGENTFORGE_BUDGET_TOKEN=file-token\n"
         "AGENTFORGE_BUDGET_SECRET=file-secret\n"
-        "AGENTFORGE_FIXTURE_USER=from-file\n",
+        "AGENTFORGE_FIXTURE_USER=from-file\n"
+        "AGENTFORGE_FIXTURE_PASSWORD=from-file\n",
         encoding="utf-8",
     )
     monkeypatch.setenv("AGENTFORGE_TARGET_ORIGIN", "https://elsewhere.example")
     monkeypatch.setenv("AGENTFORGE_BUDGET_TOKEN", "stale-token")
     monkeypatch.setenv("AGENTFORGE_BUDGET_SECRET", "stale-secret")
     monkeypatch.setenv("AGENTFORGE_FIXTURE_USER", "from-process")
+    monkeypatch.setenv("AGENTFORGE_FIXTURE_PASSWORD", "stale-password")
     load_local_env(
         root / ".env",
-        override=frozenset({live_module.ENV_ORIGIN, live_module.ENV_TOKEN, live_module.ENV_SECRET}),
+        override=frozenset({live_module.ENV_ORIGIN, live_module.ENV_PASSWORD, live_module.ENV_TOKEN, live_module.ENV_SECRET}),
     )
     assert os.environ["AGENTFORGE_TARGET_ORIGIN"] == "https://target.example"
     assert os.environ["AGENTFORGE_BUDGET_TOKEN"] == "file-token"
     assert os.environ["AGENTFORGE_BUDGET_SECRET"] == "file-secret"
+    assert os.environ["AGENTFORGE_FIXTURE_PASSWORD"] == "from-file"
     assert os.environ["AGENTFORGE_FIXTURE_USER"] == "from-process"
 
 
@@ -522,7 +525,7 @@ def test_orchestrate_live_still_refuses_first_and_names_no_secret(offline: dict[
 
 @pytest.mark.parametrize(
     "extra",
-    [["--variant-campaign"], ["--variants", "2"], ["--unpinned"], ["--multi-turn"], ["--trace", "corr-x"]],
+    [["--variant-campaign"], ["--variants", "2"], ["--unpinned"], ["--multi-turn"], ["--mutate"], ["--trace", "corr-x"]],
 )
 def test_live_refuses_options_that_belong_to_the_dry_run(
     offline: dict[str, list[str]], monkeypatch: pytest.MonkeyPatch, extra: list[str]

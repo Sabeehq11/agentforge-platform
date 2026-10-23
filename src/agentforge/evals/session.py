@@ -16,6 +16,8 @@ from __future__ import annotations
 import json
 import os
 import re
+import ssl
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from uuid import uuid4
@@ -44,7 +46,7 @@ DEMOGRAPHICS_PATH = "/interface/patient_file/summary/demographics.php"
 SESSION_PID_PATH = "/library/ajax/set_pt.php"
 _CSRF = re.compile(r"""data-csrf=["']([^"']+)["']""")
 _ENDPOINT = re.compile(r"""data-endpoint=["']([^"']+)["']""")
-_SSE_EVENTS = frozenset({"answer", "declined", "denied", "degraded", "error", "conversation", "latency_ms"})
+_SSE_EVENTS = frozenset({"answer", "declined", "denied", "degraded", "error", "conversation", "latency_ms", "step"})
 
 
 class SessionError(Exception):
@@ -86,6 +88,9 @@ class ChatTurn:
     text: str
     conversation_id: str | None
     llm_latency_ms: float | None = None
+    correlation_id: str | None = None
+    sent_at: float | None = None
+    received_at: float | None = None
 
 
 @dataclass
@@ -115,7 +120,11 @@ def parse_sse(body: bytes | str) -> dict[str, str]:
     def flush() -> None:
         nonlocal current, data_lines
         if current in _SSE_EVENTS and data_lines:
-            events[current] = "\n".join(data_lines)
+            payload = "\n".join(data_lines)
+            if current == "step" and current in events:
+                events[current] = events[current] + "\n" + payload
+            else:
+                events[current] = payload
         current = None
         data_lines = []
 
@@ -199,6 +208,34 @@ def latency_ms_from(events: dict[str, str]) -> float | None:
     return value
 
 
+def step_tools(events: dict[str, str]) -> tuple[str, ...]:
+    """Tool names from step events. The event payload is not returned."""
+    raw = events.get("step")
+    if not raw:
+        return ()
+    names: list[str] = []
+    for line in raw.splitlines():
+        try:
+            payload = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        tool = payload.get("tool") if isinstance(payload, dict) else None
+        if isinstance(tool, str) and re.fullmatch(r"[A-Za-z0-9_]{1,64}", tool):
+            names.append(tool)
+    return tuple(names)
+
+
+def correlation_id_from(response: Response) -> str | None:
+    """The id the agent echoed. The module does not relay it, so a missing header is not invented."""
+    value = _header(response, "x-correlation-id")
+    if value is None:
+        return None
+    cleaned = value.strip()
+    if not cleaned or not re.fullmatch(r"[A-Za-z0-9-]{8,64}", cleaned):
+        return None
+    return cleaned
+
+
 def conversation_id_from(events: dict[str, str]) -> str | None:
     raw = events.get("conversation")
     if not raw:
@@ -262,7 +299,7 @@ class SessionClient:
         if chat_reserve_usd == 0 and spend_role != "target":
             raise ValueError("a zero reservation is only valid for an unverified target stub")
         self.provider = provider
-        self.spend_role = spend_role
+        self._spend_role = spend_role
         self.chat_reserve_usd = chat_reserve_usd
         self.today = today
         self.rate_cap = rate_cap
@@ -280,6 +317,17 @@ class SessionClient:
         self._fixture_username = fixture_username
         self._fixture_password = fixture_password
         self.session = TargetSession(origin=self.origin)
+
+    @property
+    def spend_role(self) -> str:
+        return self._spend_role
+
+    @spend_role.setter
+    def spend_role(self, role: str) -> None:
+        if role not in ("target", "boundary"):
+            raise ValueError("target spend role must be target or boundary")
+        # Setup may use boundary with a zero reservation. Billable chat is checked in post_chat.
+        self._spend_role = role
 
     @property
     def zero_cost_stub(self) -> bool:
@@ -377,9 +425,14 @@ class SessionClient:
         )
 
     def verify_identity(self) -> None:
-        """GET the login page and stop on a fingerprint mismatch or a redirect. No later call on failure."""
+        """GET the login page and stop on a fingerprint mismatch or a redirect. No later call on failure.
+
+        The pinned login page starts the OpenEMR session on this GET. The cookie must be kept, or the
+        following login POST is a new session and the pin records a password failure.
+        """
         response = self._request("GET", self.session.identity_url, est_cost_usd=0.0, purpose="identity")
         check_login_page(response)
+        _store_cookies(self.session, response)
 
     def login(
         self,
@@ -429,6 +482,8 @@ class SessionClient:
             # tabs/main.php rejects a request that lacks the one-time token from this redirect.
             landed = self._request("GET", urljoin(action, response.location), purpose="login_landing")
             _store_cookies(self.session, landed)
+            # token_main is single use. This response is the only render that includes the dock markers.
+            # A later GET of the same path without that token is the logged-out page, not a second dock.
             if landed.status == 200 and not landed.location:
                 self._store_dock(landed)
 
@@ -506,7 +561,7 @@ class SessionClient:
 
     def post_chat(self, question: str) -> ChatTurn:
         """POST one question. Requires CSRF and confirmed patient context. Does not retry 429 or 503."""
-        if self.zero_cost_stub and (self.spend_role != "target" or self.chat_reserve_usd not in (None, 0.0)):
+        if self.zero_cost_stub and self.chat_reserve_usd not in (None, 0.0):
             raise SessionError("verified stub chat cannot use a billable reservation")
         billable = self.spend_role == "target" and not self.zero_cost_stub
         if billable and (self.chat_reserve_usd is None or self.chat_reserve_usd <= 0 or self.chat_reserve_usd > 0.25):
@@ -523,6 +578,7 @@ class SessionClient:
         if billable and self.ledger is not None:
             call_id = f"target-chat-{uuid4().hex[:12]}"
             self.ledger.reserve(call_id, "target", reserve)
+        sent_at = time.time()
         try:
             response = self._request(
                 "POST",
@@ -570,6 +626,9 @@ class SessionClient:
             answer_text(events) or response.body.decode("utf-8", "replace"),
             found,
             latency_ms,
+            correlation_id_from(response),
+            sent_at,
+            time.time(),
         )
 
 
@@ -667,6 +726,9 @@ _SOCKET_TIMEOUT = 50.0
 _REDIRECTS = frozenset({301, 302, 303, 307, 308})
 # Test seam only. request() still runs first. Not read from the environment and not a live bypass.
 connection_opener: Callable[..., HTTPConnection] | None = None
+# The isolated R7 stack publishes a self-signed certificate on this loopback port only.
+_ISOLATED_TLS_PORT = 19300
+_LOOPBACK = frozenset({"127.0.0.1", "localhost", "::1"})
 
 
 def real_transport(
@@ -695,12 +757,15 @@ def real_transport(
     if isinstance(payload, (bytes, bytearray)) and "Content-Length" not in sent_headers:
         sent_headers["Content-Length"] = str(len(payload))
     port = parts.port if parts.port is not None else (443 if parts.scheme == "https" else 80)
-    connect = (
-        connection_opener
-        if connection_opener is not None
-        else (HTTPSConnection if parts.scheme == "https" else HTTPConnection)
-    )
-    conn = connect(parts.hostname, port, timeout=timeout)
+    if connection_opener is not None:
+        conn = connection_opener(parts.hostname, port, timeout=timeout)
+    elif parts.scheme == "https" and parts.hostname in _LOOPBACK and port == _ISOLATED_TLS_PORT:
+        # Certificate verification stays on for every other host, including a public tunnel.
+        conn = HTTPSConnection(parts.hostname, port, timeout=timeout, context=ssl._create_unverified_context())
+    elif parts.scheme == "https":
+        conn = HTTPSConnection(parts.hostname, port, timeout=timeout)
+    else:
+        conn = HTTPConnection(parts.hostname, port, timeout=timeout)
     try:
         conn.request(method, path, body=payload, headers=sent_headers)
         res = conn.getresponse()

@@ -19,6 +19,7 @@ import json
 import os
 from collections.abc import Callable
 from datetime import date
+from pathlib import Path
 
 from agentforge.agents.openrouter import _cost
 from agentforge.agents.red_team_generator import ModelReply
@@ -87,7 +88,11 @@ class OpenRouterRedTeamModel:
             raise RefusedByChokepoint("provider", "provider use is disabled (PROVIDER_ENABLED is False)")
         try:
             authorize_spend(
-                "openrouter", attestations=self._attestations, approvals=self._approvals, today=self._today
+                "openrouter",
+                attestations=self._attestations,
+                approvals=self._approvals,
+                today=self._today,
+                root=Path(__file__).resolve().parents[3],
             )
         except SpendLimitNotAttested as exc:
             raise RefusedByChokepoint("spend_limit", "no fresh spend authorization for 'openrouter'") from exc

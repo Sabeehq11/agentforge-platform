@@ -150,11 +150,17 @@ def request(
     except Exception as exc:  # BudgetError subclasses; kept generic so any budget failure stops the call
         raise refuse("budget", str(exc)) from exc
 
-    # A zero-cost request cannot bill a model key. A positive estimate needs either a dashboard
-    # attestation or a fresh operator approval for this provider. Neither file is written here.
+    # A zero-cost request cannot bill a model key. A positive estimate needs a dashboard attestation,
+    # a fresh operator approval, or verified in-repo caps. None of those files is written here.
     if est_cost_usd > 0:
         try:
-            authorize_spend(provider, attestations=attestations, approvals=approvals or [], today=today)
+            authorize_spend(
+                provider,
+                attestations=attestations,
+                approvals=approvals or [],
+                today=today,
+                root=Path(__file__).resolve().parents[3],
+            )
         except Exception as exc:
             raise refuse("spend_limit", str(exc)) from exc
 

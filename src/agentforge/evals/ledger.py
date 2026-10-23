@@ -54,7 +54,7 @@ def check_ledger(ledger: dict[str, Any], cases: Iterable[Case], results_dir: Pat
     for item in PRD_IDS:
         if item not in seen:
             problems.append(f"{item} has no ledger row")
-    campaign_ids = _stored_case_ids(results, "campaign-latest.json")
+    campaign_ids = _stored_case_ids(results, "campaign-latest.json") | _stored_case_ids(results, "local-owasp-chat.json")
     public_files = list(results.glob("public-target-*.json"))
     other = {key: set(value) for key, value in header.get("other_case_owasp_ids", {}).items()}
     for row in rows:
@@ -68,7 +68,7 @@ def check_ledger(ledger: dict[str, Any], cases: Iterable[Case], results_dir: Pat
             problems.append(f"{rid} closed_by must be null")
         gates = row.get("assigned_gate")
         if not isinstance(gates, list) or not gates:
-            if status != "exercised" or row.get("unobserved_half"):
+            if not row.get("missing") and (status != "exercised" or row.get("unobserved_half")):
                 problems.append(f"{rid} has no assigned_gate")
             gates = []
         for gate in gates:
@@ -93,13 +93,15 @@ def check_ledger(ledger: dict[str, Any], cases: Iterable[Case], results_dir: Pat
             problems.append(f"{rid} offline_only must carry offline_replay evidence, not {kind}")
         if status in ("exercised", "offline_only", "partially_exercised") and not case_ids:
             problems.append(f"{rid} has no case")
-        expected = {case.case_id for case in cases if case.owasp_id == rid}
+        platform = set(row.get("platform_controls") or [])
+        expected = {case.case_id for case in cases if case.owasp_id == rid} - platform
         if set(case_ids) != expected:
             problems.append(f"{rid} case_ids {sorted(case_ids)} do not match the case files {sorted(expected)}")
-        if status == "unverified_property" and expected:
+        if status == "unverified_property" and expected and not row.get("missing") and row.get("target_evidence") in (None, "none"):
             problems.append(f"{rid} is an unverified property and a case file carries its id")
         if kind in ("offline_replay", "response_claim_proxy", "none", "platform_scan", "code_reading") and row.get("target_evidence") != "none":
-            problems.append(f"{rid} target_evidence must be none for {kind}")
+            if not (isinstance(row.get("target_evidence"), str) and row["target_evidence"].startswith("evals/results/")):
+                problems.append(f"{rid} target_evidence must be none for {kind}")
         if kind == "local_target":
             if row.get("target_evidence") != "local_target":
                 problems.append(f"{rid} local_target evidence must say so")
@@ -108,7 +110,10 @@ def check_ledger(ledger: dict[str, Any], cases: Iterable[Case], results_dir: Pat
         if any(by_id[case_id].owasp_id == "LLM08" for case_id in case_ids if case_id in by_id) and kind != "response_claim_proxy":
             problems.append(f"{rid} LLM08 evidence kind must be response_claim_proxy")
     ledger_ids = {str(row.get("id")) for row in rows}
+    controls = set(header.get("platform_controls") or [])
     for case in cases:
+        if case.case_id in controls:
+            continue
         if case.owasp_id not in ledger_ids and case.case_id not in other.get(case.owasp_id, set()):
             problems.append(f"{case.case_id} owasp id {case.owasp_id} is not in the ledger")
     gaps = {str(item.get("id")): item for item in ledger.get("open_gaps", [])}

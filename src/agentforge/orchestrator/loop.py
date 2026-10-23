@@ -16,7 +16,15 @@ from typing import Any
 
 from agentforge.agents.judge import RulesJudge, TranscriptRejected, require_transcript, target_text
 from agentforge.agents.novelty import NoveltyReport, sequence_distance
-from agentforge.agents.red_team_generator import Generated, GenerationStopped, ModelClient, Parent, RedTeamGenerator, load_parent
+from agentforge.agents.red_team_generator import (
+    Generated,
+    GenerationStopped,
+    ModelClient,
+    Parent,
+    RedTeamGenerator,
+    children_of,
+    load_parent,
+)
 from agentforge.contracts.messages import AttackResult, CampaignRequest
 from agentforge.contracts.validate import ContractError, validate
 from agentforge.evals.cases import Case
@@ -262,7 +270,7 @@ class CampaignLoop:
         return None
 
     def _select_mode(self, correlation_id: str, category: str, blocked: set[str] | None = None) -> str:
-        """Mutation for an unclaimed eligible partial. Otherwise the campaign's stored request.
+        """Mutation while an eligible partial still has child slots. Otherwise the campaign's stored request.
 
         The stored request is multi_turn when the campaign asked for it, and novel (one turn) otherwise. It is read
         from the campaign row, so a resumed campaign keeps it.
@@ -277,12 +285,14 @@ class CampaignLoop:
             """
             SELECT id FROM signals
             WHERE correlation_id = ? AND category = ? AND verdict = 'partial'
-              AND id NOT IN (SELECT signal_id FROM mutation_claims)
             ORDER BY id
             """,
             (correlation_id, category),
         ).fetchall()
+        cap = self._config.limits.max_mutations_per_parent
         for (signal_id,) in rows:
+            if children_of(self._conn, int(signal_id)) >= cap:
+                continue
             try:
                 return load_parent(self._conn, int(signal_id), self._config)
             except GenerationStopped:

@@ -1,7 +1,8 @@
 """Operator approval for a local $5 testing budget. This is not a provider-dashboard attestation.
 
 The file records that an operator approved a scoped spend ceiling. It does not claim a provider limit
-exists, and this module never writes config/spend_limits.yaml.
+exists, and this module never writes config/spend_limits.yaml. A verified in-repo-caps-only deviation
+can stand in for the missing dashboard attestation. It does not close E-6 or accept R8.
 """
 
 from __future__ import annotations
@@ -125,17 +126,32 @@ def authorize_spend(
     attestations: list[Attestation],
     approvals: list[OperatorApproval],
     today: date,
+    root: Path | None = None,
 ) -> str:
-    """Accept a dashboard attestation or a matching operator approval. Never writes either file."""
+    """Accept a dashboard attestation, a matching operator approval, or verified local caps.
+
+    Never writes either file. `in_repo_caps` is not a provider attestation and does not close E-6 or R8.
+    """
     try:
         require_attested(provider, attestations, today=today)
         return "attestation"
     except SpendLimitNotAttested as attested:
         scope = next((name for name, mapped in _SCOPE_PROVIDER.items() if mapped == provider.lower()), "")
+        if scope:
+            try:
+                require_operator_approval(scope, approvals, today=today)
+                return "operator_approval"
+            except OperatorApprovalRefused:
+                pass
+        if root is not None and provider.lower() in {"openrouter", "target"}:
+            from agentforge.gates.provider_cap import local_caps_problem
+
+            problem = local_caps_problem(root, today=today)
+            if problem is None:
+                return "in_repo_caps"
+            raise SpendLimitNotAttested(
+                f"no provider attestation and local caps are not enforced ({problem})"
+            ) from attested
         if not scope:
             raise SpendLimitNotAttested(f"no operator-approval scope for {provider!r}") from attested
-        try:
-            require_operator_approval(scope, approvals, today=today)
-        except OperatorApprovalRefused as exc:
-            raise SpendLimitNotAttested(str(exc)) from exc
-        return "operator_approval"
+        raise SpendLimitNotAttested(f"no fresh operator approval for {scope!r}") from attested

@@ -199,24 +199,31 @@ def _interrupt(conn, attack_cap: int) -> None:  # type: ignore[no-untyped-def]
     halt(conn, CID, "target_unreachable", "fixture", retryable=True)
 
 
-def test_a_claimed_parent_is_not_selected_again_when_a_resume_really_attacks() -> None:
+def test_a_judged_partial_is_mutated_until_the_child_cap() -> None:
     conn, ledger, journal = p6_env()
-    p6_campaign(conn, CID, attack_count_cap=1)
-    parent = _partial(conn, "one")
+    p6_campaign(conn, CID, attack_count_cap=3, category="TM-DS")
     loop, generator = _loop(
-        conn, ledger, journal, [model_json(DISTINCT_TEXTS[0]), model_json(DISTINCT_TEXTS[1]), model_json(DISTINCT_TEXTS[2])]
+        conn, ledger, journal,
+        [
+            model_json(DISTINCT_TEXTS[0], "TM-DS-4", "rate-limit"),
+            model_json(DISTINCT_TEXTS[1], "TM-DS-4", "rate-limit"),
+            model_json(DISTINCT_TEXTS[2], "TM-DS-4", "rate-limit"),
+        ],
     )
     seen = _spy(generator)
-    first = loop.run(CID)
-    assert first.phase == "done" and seen == ["mutation"]
+    outcome = loop.run(CID)
+    assert outcome.phase == "done" and seen == ["novel", "mutation", "mutation"]
+    parent = conn.execute("SELECT id FROM signals WHERE verdict = 'partial'").fetchone()[0]
+    children = conn.execute(
+        "SELECT turns_json FROM attack_variants WHERE parent_signal_id = ? ORDER BY id", (parent,)
+    ).fetchall()
+    assert len(children) == 2
+    parent_turn = json.loads(conn.execute("SELECT transcript_json FROM signals WHERE id = ?", (parent,)).fetchone()[0])
+    parent_text = next(turn["content"] for turn in parent_turn["turns"] if turn["role"] == "user")
+    assert {json.loads(row[0])[0] for row in children} == {DISTINCT_TEXTS[1], DISTINCT_TEXTS[2]}
+    assert parent_text not in {json.loads(row[0])[0] for row in children}
     assert [row[0] for row in conn.execute("SELECT signal_id FROM mutation_claims")] == [parent]
-    _interrupt(conn, 3)
-    resumed = loop.resume(CID)
-    # The resumed run made two more attacks. The parent was claimed, so neither was a mutation of it.
-    assert resumed.phase == "done" and resumed.sequences == 3
-    assert seen == ["mutation", "novel", "novel"]
-    assert [row[0] for row in conn.execute("SELECT signal_id FROM mutation_claims")] == [parent]
-    assert [row[0] for row in conn.execute("SELECT mode FROM attack_variants ORDER BY id")] == ["mutation", "novel", "novel"]
+    assert conn.execute("SELECT COUNT(*) FROM signals WHERE verdict = 'partial'").fetchone()[0] == 1
 
 
 def test_a_requested_multi_turn_campaign_keeps_multi_turn_across_a_resume() -> None:
@@ -240,7 +247,16 @@ def test_a_requested_multi_turn_campaign_keeps_multi_turn_across_a_resume() -> N
 def test_an_eligible_partial_is_mutated_before_the_requested_multi_turn_resumes() -> None:
     conn, ledger, journal = p6_env()
     p6_campaign(conn, CID, requested_mode="multi_turn", attack_count_cap=2)
-    _partial(conn, "one")
+    parent = _partial(conn, "one")
+    # One child remains, so mutation comes first. The next selection is the requested multi-turn attack.
+    conn.execute(
+        """
+        INSERT INTO attack_variants (correlation_id, category, subcategory, mode, parent_signal_id, depth,
+            turns_json, created_at) VALUES (?, 'TM-PI', 'TM-PI-1', 'mutation', ?, 1, ?, '2026-10-21T00:00:00Z')
+        """,
+        (CID, parent, json.dumps(["prior child"])),
+    )
+    conn.commit()
     loop, generator = _loop(conn, ledger, journal, [model_json(DISTINCT_TEXTS[0]), _two("TM-PI-3", "CANARY-AF-PI3", 2)])
     seen = _spy(generator)
     assert loop.run(CID).phase == "done"
@@ -368,9 +384,28 @@ def test_the_dry_run_cli_reaches_multi_turn_through_a_flag(monkeypatch, capsys) 
     assert code == 0
     capsys.readouterr()
     assert conn.execute("SELECT category_pinned, requested_mode FROM campaigns").fetchone() == (1, "multi_turn")
-    rows = conn.execute("SELECT mode, subcategory, turns_json FROM attack_variants").fetchall()
+    rows = conn.execute(
+        "SELECT mode, subcategory, turns_json FROM attack_variants WHERE correlation_id = 'corr-dry' AND mode = 'multi_turn'"
+    ).fetchall()
     assert rows and all(row[0] == "multi_turn" and len(json.loads(row[2])) == 2 for row in rows)
-    assert {row[1] for row in rows} == {"TM-PI-3"}
+    # Each unused subcategory is accepted once before any repeats. Order follows the scripted model, not the seed file.
+    assert [row[1] for row in rows[:3]] == ["TM-PI-3", "TM-PI-1", "TM-PI-2"]
+
+
+def test_the_dry_run_cli_mutate_selects_mutation_once(monkeypatch, capsys) -> None:  # type: ignore[no-untyped-def]
+    code, conn = _cli(monkeypatch, "--dry-run", "--mutate")
+    assert code == 0
+    capsys.readouterr()
+    assert conn.execute("SELECT mode FROM attack_variants").fetchall() == [("mutation",)]
+    assert conn.execute("SELECT COUNT(*) FROM mutation_claims").fetchone()[0] == 1
+    assert conn.execute("SELECT verdict FROM signals WHERE transcript_id = 'rec-dry-parent'").fetchone()[0] == "partial"
+
+
+def test_mutate_with_live_is_refused_before_any_call(monkeypatch, capsys) -> None:  # type: ignore[no-untyped-def]
+    code, conn = _cli(monkeypatch, "--mutate", "--live")
+    assert code == 2
+    assert "refused" in capsys.readouterr().out
+    assert conn.execute("SELECT name FROM sqlite_master WHERE name = 'campaigns'").fetchone() is None
 
 
 def test_the_dry_run_cli_default_stays_pinned_one_turn_novel(monkeypatch, capsys) -> None:  # type: ignore[no-untyped-def]
@@ -393,10 +428,10 @@ def test_the_cli_flags_do_not_open_the_live_gate(monkeypatch, capsys, flags) -> 
 
 
 def test_the_new_flags_refuse_variant_and_resume_combinations(monkeypatch, capsys) -> None:  # type: ignore[no-untyped-def]
-    for argv in (("--multi-turn", "--variant-campaign"), ("--unpinned", "--resume", "x")):
+    for argv in (("--multi-turn", "--variant-campaign"), ("--unpinned", "--resume", "x"), ("--mutate", "--trace", "x")):
         code, _conn = _cli(monkeypatch, *argv)
         assert code == 2
-    assert capsys.readouterr().out.count("refused before any call") == 2
+    assert capsys.readouterr().out.count("refused before any call") == 3
 
 
 # A generator halt reaches the loop as GenerationStopped.halt, which is a StepHalt wrapping the typed Halt.

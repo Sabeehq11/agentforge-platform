@@ -61,14 +61,17 @@
     "owasp_id": {
       "type": "string",
       "enum": [
-        "A01", "A03", "A04", "A07", "A09",
-        "LLM01", "LLM02", "LLM04", "LLM06", "LLM08", "LLM10"
+        "A01", "A03", "A04", "A06", "A07", "A09", "A10",
+        "LLM01", "LLM02", "LLM04", "LLM05", "LLM06", "LLM08", "LLM10"
       ]
     },
     "exercise": { "type": "string", "enum": ["boundary", "invariant", "regression_risk"] },
-    "grader": { "type": "string", "enum": ["canary", "patient_boundary", "missing_authority", "attack_count", "question_length", "active_markup"] },
+    "grader": { "type": "string", "enum": ["canary", "patient_boundary", "missing_authority", "attack_count", "question_length", "active_markup", "audit_trace", "rate_limit", "stored_evidence"] },
     "canary": { "type": "string", "minLength": 1, "maxLength": 64 },
     "fixture": { "type": "string", "minLength": 1, "maxLength": 128 },
-    "notes": { "type": "string", "maxLength": 2000 }
+    "notes": { "type": "string", "maxLength": 2000 },
+    "evidence_ref": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "evidence_id": { "type": "string", "minLength": 1, "maxLength": 64 },
+    "expected_grade": { "type": "string", "enum": ["pass", "fail"] }
   }
 }

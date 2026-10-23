@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from agentforge.gates.provider_cap import local_caps_problem
 from agentforge.safety.operator_approval import (
     OperatorApprovalRefused,
     authorize_spend,
@@ -111,3 +112,64 @@ def test_approval_does_not_write_an_attestation(tmp_path: Path) -> None:
     with pytest.raises(SpendLimitNotAttested):
         authorize_spend("target", attestations=[], approvals=approvals, today=TODAY)
     assert not (tmp_path / "spend_limits.yaml").exists()
+
+
+def _local_cap_root(tmp_path: Path) -> Path:
+    root = tmp_path / "caps"
+    (root / "Docs/attestations").mkdir(parents=True)
+    (root / "config").mkdir()
+    (root / "src/agentforge/safety").mkdir(parents=True)
+    (root / "Docs/attestations/provider-cap-deviation.yaml").write_text(
+        "scope: in-repo-caps-only\napproved_by: Test Human\napproved_on: 2026-10-22\nstatement: local caps only\n",
+        encoding="utf-8",
+    )
+    (root / "config/budget.yaml").write_text(
+        "per_run_usd: 5\nper_day_usd: 5\nhard_ceiling_per_run_usd: 5\nhard_ceiling_per_day_usd: 15\n",
+        encoding="utf-8",
+    )
+    (root / "src/agentforge/safety/ledger.py").write_text(
+        "SHARED_CEILING_USD = 5.0\nif committed_usd(conn) > SHARED_CEILING_USD: raise BudgetExceeded\n",
+        encoding="utf-8",
+    )
+    (root / "src/agentforge/safety/budget.py").write_text(
+        "class BudgetExceeded(Exception):\n    pass\n\ndef reserve(self):\n    raise BudgetExceeded()\n",
+        encoding="utf-8",
+    )
+    (root / "src/agentforge/safety/chokepoint.py").write_text(
+        "LIVE_ENABLED = False\nPROVIDER_ENABLED = False\n", encoding="utf-8"
+    )
+    (root / "Docs/attestations/spend-reconciliation.yaml").write_text(
+        "as_of: 2026-10-22\nincurred_usd: 0.30\nopen_reserved_usd: 0\nuncertain_usd: 0\nexcess_usd: 0\n",
+        encoding="utf-8",
+    )
+    (root / "config/spend_limits.yaml").write_text("attestations: []\n", encoding="utf-8")
+    return root
+
+
+def test_verified_local_caps_replace_a_missing_provider_attestation(tmp_path: Path) -> None:
+    root = _local_cap_root(tmp_path)
+    today = date(2026, 10, 22)
+    assert local_caps_problem(root, today=today) is None
+    assert authorize_spend("openrouter", attestations=[], approvals=[], today=today, root=root) == "in_repo_caps"
+    assert authorize_spend("target", attestations=[], approvals=[], today=today, root=root) == "in_repo_caps"
+    assert (root / "config/spend_limits.yaml").read_text(encoding="utf-8") == "attestations: []\n"
+
+
+def test_missing_local_caps_still_fail_closed(tmp_path: Path) -> None:
+    root = _local_cap_root(tmp_path)
+    today = date(2026, 10, 22)
+    (root / "config/budget.yaml").write_text(
+        "per_run_usd: 50\nper_day_usd: 5\nhard_ceiling_per_run_usd: 50\nhard_ceiling_per_day_usd: 15\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(SpendLimitNotAttested, match="local caps are not enforced"):
+        authorize_spend("openrouter", attestations=[], approvals=[], today=today, root=root)
+    (root / "src/agentforge/safety/ledger.py").write_text("SHARED_CEILING_USD = 50\n", encoding="utf-8")
+    (root / "config/budget.yaml").write_text(
+        "per_run_usd: 5\nper_day_usd: 5\nhard_ceiling_per_run_usd: 5\nhard_ceiling_per_day_usd: 15\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(SpendLimitNotAttested, match="shared \\$5 ledger ceiling"):
+        authorize_spend("target", attestations=[], approvals=[], today=today, root=root)
+    with pytest.raises(SpendLimitNotAttested, match="no operator-approval scope"):
+        authorize_spend("other", attestations=[], approvals=[], today=today, root=root)

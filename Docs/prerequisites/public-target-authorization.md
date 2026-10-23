@@ -1,6 +1,9 @@
 # Public-target authorization (prerequisite for Gate K1)
 
-status: open
+status: closed
+implemented_commit: 6d2446205cd23c903b375b8b49a6e3ac14064fde
+approved_by: Sabeeh Qureshi
+closing_test: tests/test_chokepoint.py::test_a_zero_cost_public_request_needs_an_origin_bound_approval
 
 Recorded 2026-10-21 by the R7-R8 offline Build. Gate K1 (a temporary `LIVE_ENABLED` change) is UNAVAILABLE in R7 and R8 until this
 file reads `status: closed` with `implemented_commit` and `approved_by`, and `scripts/preflight_live.py` reports `k1_available` GO.

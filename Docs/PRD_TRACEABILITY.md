@@ -313,10 +313,11 @@ No `client_verified` line exists today. The basis is a label. It does not gate `
 ## Open OWASP verification gaps
 
 The R4 ledger [`evals/owasp_coverage.json`](../evals/owasp_coverage.json) records coverage and closes no PRD
-requirement. It does not satisfy the PRD sentence that the suite must cover the relevant OWASP items. A04 and A09 are
-unverified properties with no case. A01 is offline only, with cases and synthetic replays and no target outcome.
+requirement. It does not satisfy the PRD sentence that the suite must cover the relevant OWASP items. A04 is an
+offline cap case and A09 is a platform-trace case. Neither closes its row. A01 is offline only, with cases and
+synthetic replays and no target outcome.
 LLM02, LLM06 and LLM08 are partially exercised. LLM08 is a response-claim proxy,
-not tool-invocation proof. All 11 cases pass the p.11 gate on case metadata and synthetic bodies only, which is not a
+not tool-invocation proof. All 19 cases pass the p.11 gate on case metadata and synthetic bodies only, which is not a
 finding about the target. The unobserved halves below have no roadmap checkpoint, so they are unresolved. No host
 cycle's scope has been amended, and `REMEDIATION_ROADMAP.md` is not edited. R10 appears only as the public-target
 repeat of a chat-observable half. None of these has run.

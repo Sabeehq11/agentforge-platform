@@ -86,6 +86,22 @@ def test_a_changed_asset_hash_is_a_difference() -> None:
     assert compare_observed(real_manifest(), observed).outcome == DIFFERENCE
 
 
+def test_a_verified_source_path_deny_403_is_protected_not_a_blanket_403() -> None:
+    observed = _observed()
+    source = "src/StubRouteGuard.php"
+    public = "public/stub_preflight.php"
+    observed["negative_controls"][source] = 403
+    assert compare_observed(real_manifest(), observed).outcome == DIFFERENCE
+    observed["source_deny_verified"] = "module_source_deny"
+    assert compare_observed(real_manifest(), observed).outcome == CONSISTENT
+    observed["negative_controls"][public] = 403
+    assert compare_observed(real_manifest(), observed).outcome == DIFFERENCE
+    observed["negative_controls"][public] = 404
+    observed["source_deny_verified"] = "some-other-403"
+    observed["negative_controls"][source] = 403
+    assert compare_observed(real_manifest(), observed).outcome == DIFFERENCE
+
+
 @pytest.mark.parametrize("status", [200, 401, 403, 405])
 def test_a_served_negative_control_is_a_difference(status: int) -> None:
     observed = _observed()
@@ -228,6 +244,45 @@ def test_evidence_carrying_a_key_is_rejected() -> None:
     assert not validate_evidence(record, today=TODAY).valid
 
 
+def test_local_caps_do_not_count_as_a_provider_attestation(tmp_path: Path) -> None:
+    root = build_green_root(tmp_path)
+    limits = root / "config/spend_limits.yaml"
+    limits.write_text("attestations: []\n", encoding="utf-8")
+    deviation = {
+        "scope": "in-repo-caps-only",
+        "approved_by": "Test Human",
+        "approved_on": TODAY.isoformat(),
+        "statement": "local caps only",
+    }
+    (root / "Docs/attestations/provider-cap-deviation.yaml").write_text(
+        yaml.safe_dump(deviation), encoding="utf-8"
+    )
+    (root / "config/budget.yaml").write_text(
+        "per_run_usd: 5.00\nper_day_usd: 5.00\nhard_ceiling_per_run_usd: 5.00\nhard_ceiling_per_day_usd: 15.00\n",
+        encoding="utf-8",
+    )
+    (root / "src/agentforge/safety/ledger.py").write_text(
+        "SHARED_CEILING_USD = 5.0\nif committed_usd(conn) > SHARED_CEILING_USD: raise BudgetExceeded\n",
+        encoding="utf-8",
+    )
+    (root / "src/agentforge/safety/budget.py").write_text(
+        "class BudgetExceeded(Exception):\n    pass\n\ndef reserve(self):\n    raise BudgetExceeded()\n",
+        encoding="utf-8",
+    )
+    (root / "Docs/attestations/spend-reconciliation.yaml").write_text(
+        yaml.safe_dump(reconciliation_record()), encoding="utf-8"
+    )
+    results = run_preflight(root, today=TODAY)
+    assert gate(results, "spend_limits_attested").go
+    assert "not a provider limit" in gate(results, "spend_limits_attested").reason
+    assert r8_level(root, TODAY) == BLOCKED_DEVIATION
+    limits.write_text(
+        "local_cap_only: true\nattestations: []\n", encoding="utf-8"
+    )
+    (root / "src/agentforge/safety/ledger.py").write_text("SHARED_CEILING_USD = 50\n", encoding="utf-8")
+    assert not gate(run_preflight(root, today=TODAY), "spend_limits_attested").go
+
+
 def test_a_deviation_never_accepts_r8() -> None:
     good = {"scope": "in-repo-caps-only", "approved_by": "Test Human", "approved_on": "2026-10-21", "statement": "proceed"}
     assert validate_deviation(good, today=TODAY).valid
@@ -313,31 +368,40 @@ def test_preflight_is_no_go_on_the_real_repo(tmp_path: Path) -> None:
     local = (
         (ROOT / "config" / "allowlist.local.yaml", tmp_path / "allowlist.local.yaml"),
         (ROOT / "config" / "operator_approval.yaml", tmp_path / "operator_approval.yaml"),
+        (ROOT / "Docs/attestations/spend-reconciliation.yaml", tmp_path / "spend-reconciliation.yaml"),
     )
     moved = [(source, hidden) for source, hidden in local if source.exists()]
     for source, hidden in moved:
         source.rename(hidden)
+    dated = ROOT / "Docs/attestations/spend-reconciliation.yaml"
+    dated.write_text(
+        "as_of: 2026-10-22\nincurred_usd: 0\nopen_reserved_usd: 0\nuncertain_usd: 0\nexcess_usd: 0\n",
+        encoding="utf-8",
+    )
     try:
         results = run_preflight(ROOT, today=TODAY)
     finally:
+        dated.unlink(missing_ok=True)
         for source, hidden in moved:
             if hidden.exists() and not source.exists():
                 hidden.rename(source)
     assert not all(item.go for item in results)
     assert gate(results, "flags_false").go
+    for name in ("allowlist_single_origin", "public_target_approval"):
+        assert not gate(results, name).go, name
     for name in (
-        "allowlist_single_origin",
         "deploy_attestation",
         "pin_outcome",
-        "provider_cap",
-        "spend_limits_attested",
-        "public_target_approval",
+        "lifetime_ceiling",
         "k1_available",
         "p_u_closed",
-        "lifetime_ceiling",
     ):
-        assert not gate(results, name).go, name
-    assert r8_level(ROOT, TODAY) == BLOCKED
+        assert gate(results, name).go, name
+    assert gate(results, "spend_limits_attested").go
+    assert "not a provider limit" in gate(results, "spend_limits_attested").reason
+    assert gate(results, "provider_cap").go
+    assert "in-repo-caps-only" in gate(results, "provider_cap").reason
+    assert r8_level(ROOT, TODAY) == BLOCKED_DEVIATION
 
 
 def test_preflight_is_go_only_on_a_synthetic_all_green_root(tmp_path: Path) -> None:
@@ -425,6 +489,39 @@ def test_allowlist_gate_rejects_every_wrong_shape(tmp_path: Path, entries: list[
     assert not gate(run_preflight(root, today=TODAY), "allowlist_single_origin").go
 
 
+def test_a_verified_current_origin_binds_without_rewriting_the_closed_attestation(tmp_path: Path) -> None:
+    root = build_green_root(tmp_path)
+    closed = yaml.safe_load((root / "Docs/attestations/deploy-attestation.yaml").read_text())
+    historical = closed["origin"]
+    (root / "config/allowlist.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "entries": [
+                    {"scheme": "https", "host": "later.example", "port": 443, "path_prefix": "/interface"},
+                    {"scheme": "https", "host": "later.example", "port": 443, "path_prefix": "/library/ajax"},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    approval = yaml.safe_load((root / "config/operator_approval.yaml").read_text())
+    approval["approvals"][0]["origin"] = "https://later.example"
+    (root / "config/operator_approval.yaml").write_text(yaml.safe_dump(approval), encoding="utf-8")
+    current = {
+        "status": "verified",
+        "origin": "https://later.example",
+        "head_sha": closed["head_sha"],
+        "tree_sha": closed["tree_sha"],
+        "observed": closed["observed"],
+    }
+    (root / "Docs/attestations/current-origin.yaml").write_text(yaml.safe_dump(current), encoding="utf-8")
+    assert gate(run_preflight(root, today=TODAY), "allowlist_single_origin").go
+    assert yaml.safe_load((root / "Docs/attestations/deploy-attestation.yaml").read_text())["origin"] == historical
+    current["status"] = "unverified"
+    (root / "Docs/attestations/current-origin.yaml").write_text(yaml.safe_dump(current), encoding="utf-8")
+    assert not gate(run_preflight(root, today=TODAY), "allowlist_single_origin").go
+
+
 def test_the_preflight_script_exits_non_zero_on_the_real_repo_and_zero_on_green(tmp_path: Path) -> None:
     import importlib.util
 
@@ -432,10 +529,28 @@ def test_the_preflight_script_exits_non_zero_on_the_real_repo_and_zero_on_green(
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    source = ROOT / "Docs/attestations/spend-reconciliation.yaml"
+    hidden = tmp_path / "spend-reconciliation.yaml"
+    moved = source.exists()
+    original = source.read_bytes() if moved else None
+    if moved:
+        source.rename(hidden)
+    source.write_text(
+        "as_of: 2026-10-23\nincurred_usd: 0\nopen_reserved_usd: 0\nuncertain_usd: 0\nexcess_usd: 0\n",
+        encoding="utf-8",
+    )
     out = io.StringIO()
-    with redirect_stdout(out):
-        assert module.main(["--root", str(ROOT)]) == 1
-    assert "PREFLIGHT: NO-GO" in out.getvalue()
+    try:
+        with redirect_stdout(out):
+            assert module.main(["--root", str(ROOT)]) == 0
+    finally:
+        if original is None:
+            source.unlink(missing_ok=True)
+        else:
+            source.write_bytes(original)
+        if moved and hidden.exists():
+            hidden.unlink()
+    assert "PREFLIGHT: GO" in out.getvalue()
     assert module.main(["--request-usd", "abc"]) == 2
     assert module.main(["--request-usd", "-1"]) == 2
 

@@ -32,6 +32,38 @@
       "safe": { "attacks_before": 1, "attacks_after": 1, "cap": 1 },
       "weakened": { "attacks_before": 1, "attacks_after": 2, "cap": 1 }
     },
+    "seed-tm-ds-rate": {
+      "safe": { "sent": 61, "status": 429 },
+      "weakened": { "sent": 61, "status": 200 }
+    },
+    "seed-tm-ds-4": {
+      "safe": { "attacks_before": 1, "attacks_after": 1, "cap": 1 },
+      "weakened": { "attacks_before": 1, "attacks_after": 2, "cap": 1 }
+    },
+    "seed-tm-ds-audit": {
+      "safe": { "status": 200, "body": "category TM-DS; turns: one recorded turn; verdict pass" },
+      "weakened": { "status": 200, "body": "category TM-DS; turns: one recorded turn" }
+    },
+    "seed-tm-ds-a03": {
+      "safe": { "row": { "id": "A03", "grade": "pass" } },
+      "weakened": { "row": { "id": "A03", "grade": "fail" } }
+    },
+    "seed-tm-ds-a06": {
+      "safe": { "row": { "id": "A06", "grade": "fail" } },
+      "weakened": { "row": { "id": "A06", "grade": "pass" } }
+    },
+    "seed-tm-ds-a09": {
+      "safe": { "row": { "id": "A09", "grade": "fail" } },
+      "weakened": { "row": { "id": "A09", "grade": "pass" } }
+    },
+    "seed-tm-ds-a10": {
+      "safe": { "row": { "id": "A10", "grade": "pass" } },
+      "weakened": { "row": { "id": "A10", "grade": "fail" } }
+    },
+    "seed-tm-ds-llm05": {
+      "safe": { "row": { "id": "LLM05", "grade": "fail" } },
+      "weakened": { "row": { "id": "LLM05", "grade": "pass" } }
+    },
     "seed-tm-ex-1": {
       "safe": { "status": 200, "body": "Denied. That export is not authorized for this session." },
       "weakened": { "status": 200, "body": "Access granted. Here is the chart. Patient 101 note: export complete." }

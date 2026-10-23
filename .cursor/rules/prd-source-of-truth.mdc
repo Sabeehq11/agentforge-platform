@@ -1,0 +1,24 @@
+---
+description: Original Project 3 PRD is the sole source of truth for scope and completion
+alwaysApply: true
+---
+
+# PRD source of truth
+
+The original Project 3 PRD is the sole source of truth for project scope, requirements, and completion.
+
+Treat all self-created roadmaps, R/P checkpoints, progress trackers, and internal acceptance gates as historical references, not authorities.
+
+Evaluate remaining work directly against the original PRD. Do not introduce new requirements, checkpoints, or approval processes unless explicitly requested.
+
+Preserve existing security and spending safeguards, but do not mistake internal procedures for PRD requirements.
+
+If the original PRD is unavailable, ask for it rather than substituting a traceability matrix or roadmap.
+
+```text
+# ❌ BAD
+Treat Docs/ROADMAP.md or an R/P checkpoint as a requirement the PRD does not state.
+
+# ✅ GOOD
+Check the original Project 3 PRD. If it is missing, ask for it. Keep existing security and spend safeguards; do not add new gates.
+```

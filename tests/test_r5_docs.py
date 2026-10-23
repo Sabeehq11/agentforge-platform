@@ -209,10 +209,10 @@ def test_wording_in_the_updated_docs() -> None:
     readme = _flat((ROOT / "README.md").read_text(encoding="utf-8"))
     architecture = _flat((ROOT / "ARCHITECTURE.md").read_text(encoding="utf-8"))
     for text in (readme, architecture):
-        assert "response-claim proxy" in text and "U1 to U5" in text and "unverified propert" in text
+        assert "response-claim proxy" in text and "U1 to U5" in text and "neither is a closed row" in text
         assert "constructed facts" in text and "client_verified" in text
     assert "canned reply, not the target" in readme
-    assert "OK 11 cases" in readme
+    assert "OK 19 cases" in readme
     evals_readme = _flat((ROOT / "evals" / "README.md").read_text(encoding="utf-8"))
     assert "H-3 is unmet" not in evals_readme and "does not contain a live result" not in evals_readme
     assert "response-claim proxy" in evals_readme and "closes no PRD requirement" in evals_readme

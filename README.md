@@ -26,12 +26,13 @@ only over HTTP. See [TARGET_FREEZE.md](Docs/TARGET_FREEZE.md).
 - **Contracts and store** (`contracts/v1/`, `src/agentforge/contracts/`, `src/agentforge/store/`): versioned
   message and error schemas, and a SQLite store that rejects a duplicate sequence, a missing field and a published
   status.
-- **Seed suite and executor** (`evals/cases/`, `src/agentforge/evals/`): eleven synthetic cases across TM-PI, TM-EX,
+- **Seed suite and executor** (`evals/cases/`, `src/agentforge/evals/`): thirteen synthetic cases across TM-PI, TM-EX,
   TM-DS, TM-ID and TM-TM, deterministic graders, and a session client for the target login and chat. Every case
   passes the PRD p.11 validity gate on case metadata and synthetic bodies, which is not a finding about the target.
-  `evals/owasp_coverage.json` is a coverage ledger that closes no PRD requirement: A04 and A09 are unverified
-  properties, A01 is offline only (cases and synthetic replays, no target outcome), LLM02, LLM06 and LLM08 are
-  partially exercised, and the LLM08 case is a response-claim proxy, not tool-invocation proof. `evals/results/offline-latest.json` holds synthetic safe and weakened replays. They are not
+  `evals/owasp_coverage.json` is a coverage ledger that closes no PRD requirement: A04 is an unverified Co-Pilot rate-limit case and
+  A09 is a platform-trace case, and neither is a closed row, A01 is offline only (cases and synthetic replays, no
+  target outcome), LLM02, LLM06 and LLM08 are partially exercised, and the LLM08 case is a response-claim proxy,
+  not tool-invocation proof. `evals/results/offline-latest.json` holds synthetic safe and weakened replays. They are not
   target results. The unobserved halves are named in [PRD_TRACEABILITY.md](Docs/PRD_TRACEABILITY.md) as R10 and the
   open gaps U1 to U5. None of those has run.
 - **Judge** (`src/agentforge/agents/judge.py`): deterministic rules first, a model only for an ambiguous transcript.
@@ -121,7 +122,7 @@ python scripts/check_p10_evidence.py
 ```
 
 This validates every case against `evals/schema/case.schema.json`, scans fixtures for PHI patterns, and runs the
-suite in dry-run mode. It also checks the OWASP ledger and the p.11 gate for every case. It exits 0 and prints `OK 11 cases ... dry-run fabricated no pass`. A dry run never reports a
+suite in dry-run mode. It also checks the OWASP ledger and the p.11 gate for every case. It exits 0 and prints `OK 19 cases ... dry-run fabricated no pass`. A dry run never reports a
 `pass`: a case that needs a target is `not_run`. Replay of a recorded transcript is covered by `tests/test_evals.py`.
 `scripts/regress.py` refuses `--live` and does not open a socket. `scripts/check_reports.py` checks the three draft
 reports. `scripts/observe.py` prints the six observability answers from the local store and has no live path.

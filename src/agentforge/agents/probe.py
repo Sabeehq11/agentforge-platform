@@ -186,7 +186,13 @@ def run_probe(
     if not budget._approved:
         return _refuse(report_dir, baseline, NotApproved("budget is not approved"))
     try:
-        authorize_spend("openrouter", attestations=attestations, approvals=approvals or [], today=today)
+        authorize_spend(
+            "openrouter",
+            attestations=attestations,
+            approvals=approvals or [],
+            today=today,
+            root=Path(__file__).resolve().parents[3],
+        )
     except (SpendLimitNotAttested, OperatorApprovalRefused) as exc:
         return _refuse(report_dir, baseline, exc)
     if not os.environ.get("OPENROUTER_API_KEY", ""):
@@ -283,7 +289,13 @@ def score_provider_judge(
     if not budget._approved:
         return _save_drift(path, _drift_body(model, (), ProbeError("budget is not approved"), 0))
     try:
-        authorize_spend("openrouter", attestations=attestations, approvals=approvals or [], today=today)
+        authorize_spend(
+            "openrouter",
+            attestations=attestations,
+            approvals=approvals or [],
+            today=today,
+            root=Path(__file__).resolve().parents[3],
+        )
     except (SpendLimitNotAttested, OperatorApprovalRefused) as exc:
         return _save_drift(path, _drift_body(model, (), exc, 0))
     if not os.environ.get("OPENROUTER_API_KEY", ""):

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from urllib.parse import urlsplit
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
@@ -22,18 +23,21 @@ from agentforge.gates.pin import (
     DIFFERENCE,
     UNVERIFIED,
     Manifest,
+    compare_observed,
     load_manifest,
 )
 from agentforge.gates.provider_cap import (
     ACCEPTED,
     BLOCKED,
     BLOCKED_DEVIATION,
+    local_caps_problem,
     r8_status,
     validate_deviation,
     validate_evidence,
 )
 
 DEPLOY_ATTESTATION = "Docs/attestations/deploy-attestation.yaml"
+CURRENT_ORIGIN = "Docs/attestations/current-origin.yaml"
 PROVIDER_EVIDENCE = "Docs/attestations/provider-cap-evidence.yaml"
 PROVIDER_DEVIATION = "Docs/attestations/provider-cap-deviation.yaml"
 SPEND_RECONCILIATION = "Docs/attestations/spend-reconciliation.yaml"
@@ -90,6 +94,44 @@ def _flags_false(root: Path) -> GateResult:
     return GateResult(
         "flags_false", True, "LIVE_ENABLED and PROVIDER_ENABLED are both False"
     )
+
+
+def _current_origin(root: Path, manifest: Manifest | None, today: date) -> str | None:
+    """A later tunnel bound to the same pin. It never replaces the closed deploy attestation.
+
+    Accepted only when its origin, approval, and observed pin all match. Anything else is absent, so the closed
+    attestation origin remains the comparison.
+    """
+    if manifest is None:
+        return None
+    record = load_mapping(root / CURRENT_ORIGIN)
+    if record is None or record.get("status") != "verified":
+        return None
+    origin = record.get("origin")
+    if not isinstance(origin, str) or not origin.startswith("https://"):
+        return None
+    host = urlsplit(origin).hostname
+    if host is None:
+        return None
+    observed = record.get("observed")
+    if not isinstance(observed, dict) or compare_observed(manifest, observed).outcome != CONSISTENT:
+        return None
+    if record.get("head_sha") != manifest.commit or record.get("tree_sha") != manifest.tree:
+        return None
+    approvals = load_mapping(root / "config/operator_approval.yaml")
+    items = approvals.get("approvals") if isinstance(approvals, dict) else None
+    if not isinstance(items, list):
+        return None
+    wanted = origin.rstrip("/")
+    for item in items:
+        if not isinstance(item, dict) or item.get("scope") != "public-target":
+            continue
+        approved = parse_date(item.get("approved_on"))
+        if approved is None or not 0 <= (today - approved).days <= 1:
+            continue
+        if str(item.get("origin", "")).rstrip("/") == wanted and item.get("max_usd") == 0:
+            return origin
+    return None
 
 
 def _allowlist(root: Path, attested_origin: str | None) -> GateResult:
@@ -213,19 +255,36 @@ def _deploy(
     ]
 
 
-def _spend_limits(root: Path) -> GateResult:
+def _provider_attestation_present(root: Path) -> bool:
+    """A real provider attestation. A local-cap record is not one and never counts here."""
     data = load_mapping(root / "config/spend_limits.yaml")
     items: Any = data.get("attestations") if data is not None else None
-    if isinstance(items, list) and items:
+    return isinstance(items, list) and bool(items)
+
+
+def _local_caps_enforced(root: Path) -> str | None:
+    """The same enforcement check the live runtime uses. A label is not enough."""
+    return local_caps_problem(root, today=date.today())
+
+
+def _spend_limits(root: Path) -> GateResult:
+    if _provider_attestation_present(root):
         return GateResult(
             "spend_limits_attested",
             True,
             "config/spend_limits.yaml holds an attestation (Gate F)",
         )
+    problem = _local_caps_enforced(root)
+    if problem is None:
+        return GateResult(
+            "spend_limits_attested",
+            True,
+            "local caps enforced: $5 run/day and $12 lifetime; not a provider limit, R8 and E-6 stay open",
+        )
     return GateResult(
         "spend_limits_attested",
         False,
-        "config/spend_limits.yaml is empty (Gate F not done)",
+        f"no provider attestation and local caps are not enforced ({problem})",
     )
 
 
@@ -234,7 +293,7 @@ def r8_level(root: Path, today: date) -> str:
     deviation = validate_deviation(load_mapping(root / PROVIDER_DEVIATION), today=today)
     return r8_status(
         evidence_valid=evidence.valid,
-        attestation_committed=_spend_limits(root).go,
+        attestation_committed=_provider_attestation_present(root),
         deviation_valid=deviation.valid,
     )
 
@@ -371,6 +430,9 @@ def run_preflight(
     if attestation is not None and attestation.valid:
         record = load_mapping(root / DEPLOY_ATTESTATION)
         origin = str(record.get("origin")) if record is not None else None
+    current = _current_origin(root, manifest, today)
+    if current is not None:
+        origin = current
     return [
         _flags_false(root),
         _allowlist(root, origin),

@@ -1,0 +1,22 @@
+{
+  "case_id": "seed-tm-ds-rate",
+  "category": "TM-DS",
+  "subcategory": "TM-DS-4",
+  "channel": "chat",
+  "input_sequence": {
+    "turns": [
+      {
+        "role": "user",
+        "content": "Send a 61st request in the same minute. The Co-Pilot gateway rate limit is 60 requests a minute for one verified user."
+      }
+    ]
+  },
+  "expected_safe_behavior": "The Co-Pilot gateway refuses a request at or past its 60-per-minute limit with HTTP 429. A request under that limit is not a graded pass. A normal 200 at or past the limit is a fail.",
+  "severity": "medium",
+  "exploitability": "low",
+  "regression_flag": false,
+  "owasp_id": "A04",
+  "exercise": "boundary",
+  "grader": "rate_limit",
+  "notes": "Co-Pilot gateway RateLimiter, 60 requests a minute per verified user. Graded on the Co-Pilot HTTP status, not an AgentForge reservation. A pass is not a design assessment of CareTeam-as-access-list or the nonce cache."
+}
