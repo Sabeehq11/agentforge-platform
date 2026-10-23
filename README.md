@@ -64,6 +64,9 @@ only over HTTP. See [TARGET_FREEZE.md](Docs/TARGET_FREEZE.md).
 - A local, operator-run campaign graded three cases `pass` against the target at `127.0.0.1:8300`: TM-PI-1,
   TM-EX-3 and TM-DS-1 (`evals/results/campaign-latest.json`). One live `SeedMutator` turn is in
   `evals/results/agent-live.json`. These are defense-held results, not discovered exploits.
+- One public campaign, `corr-live-fix-20261023`, finished `done` against the deployed target on pin `9f03654`
+  (`evals/results/public-campaign-20261023.json`). Two chat attacks were judged `pass`. The journal records the executor. No exploit was confirmed,
+  and the target reply text is not in the file. That is not a vulnerability report.
 - The Judge was measured on four labeled items and one provider-scored ambiguous item. That is not a rate.
 - D-13: 100 of 100 completed on the Week 1 stub route, `live: true`, `zero_cost_stub: true`, measured spend `$0`.
   Not a provider-model run. Details are in [LOAD_TEST.md](Docs/LOAD_TEST.md).
@@ -74,11 +77,13 @@ only over HTTP. See [TARGET_FREEZE.md](Docs/TARGET_FREEZE.md).
 
 ## Deployed link
 
-**Not yet submitted.** The intended public target is the Project 2 Co-Pilot at `https://127.0.0.1:9300`, reached
-through a temporary Cloudflare quick tunnel. The hostname is not in the tracked allowlist. Copy
-`config/allowlist.local.example.yaml` to the gitignored `config/allowlist.local.yaml` and set `public_host` to the
-hostname from the current tunnel. A missing file adds no public host. The isolated stack on port 19300 is not the
-campaign target.
+The public campaign `corr-live-fix-20261023` ran against
+`https://char-boot-podcasts-competition.trycloudflare.com` on pin `9f03654`. The graded result, without target
+reply text, is [evals/results/public-campaign-20261023.json](evals/results/public-campaign-20261023.json). Both
+verdicts were `pass`. That file is not a vulnerability report, and it is not proof the tunnel is still up. The
+hostname is not in the tracked allowlist. Copy `config/allowlist.local.example.yaml` to the gitignored
+`config/allowlist.local.yaml` and set `public_host` to the hostname from the current tunnel. A missing file adds
+no public host. The isolated stack on port 19300 is not the campaign target.
 
 ## Not verified live
 
