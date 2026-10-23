@@ -5,6 +5,7 @@
 config/operator_approval.yaml
 config/allowlist.local.yaml
 config/live.local
+config/isolated-target.pem
 *.db
 *.sqlite
 *.sqlite3

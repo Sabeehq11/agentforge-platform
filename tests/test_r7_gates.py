@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import copy
 import io
-from contextlib import redirect_stdout
+import subprocess
+from contextlib import contextmanager, redirect_stdout
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -52,6 +53,45 @@ def load(name: str) -> dict[str, Any]:
 
 def gate(results: list[Any], name: str) -> Any:
     return next(item for item in results if item.name == name)
+
+
+# Files a clean checkout does not have. Hiding them makes the real-repo assertions match CI.
+_UNTRACKED_GATE_INPUTS = (
+    ROOT / "config" / "allowlist.local.yaml",
+    ROOT / "config" / "operator_approval.yaml",
+    ROOT / "Docs/attestations/current-origin.yaml",
+    ROOT / "Docs/attestations/deploy-attestation.yaml",
+    ROOT / "Docs/attestations/provider-cap-deviation.yaml",
+    ROOT / "Docs/attestations/provider-cap-evidence.yaml",
+    ROOT / "Docs/attestations/spend-reconciliation.yaml",
+)
+
+
+@contextmanager
+def _committed_gate_inputs(tmp_path: Path):  # type: ignore[no-untyped-def]
+    """Hide untracked gate inputs, then restore them. Tracked files stay in place."""
+    hidden: list[tuple[Path, Path]] = []
+    for source in _UNTRACKED_GATE_INPUTS:
+        tracked = subprocess.run(
+            ["git", "ls-files", "--error-unmatch", "--", str(source.relative_to(ROOT))],
+            cwd=ROOT,
+            capture_output=True,
+            check=False,
+        )
+        if tracked.returncode == 0 or not source.exists():
+            continue
+        destination = tmp_path / source.name
+        if destination.exists():
+            destination = tmp_path / f"{source.parent.name}-{source.name}"
+        source.rename(destination)
+        hidden.append((source, destination))
+    try:
+        yield
+    finally:
+        for source, destination in hidden:
+            if destination.exists() and not source.exists():
+                source.parent.mkdir(parents=True, exist_ok=True)
+                destination.rename(source)
 
 
 # --- manifest and pin outcome ---------------------------------------------------------------------------------
@@ -365,43 +405,31 @@ def test_every_shipped_template_exists() -> None:
 
 # --- preflight ------------------------------------------------------------------------------------------------
 def test_preflight_is_no_go_on_the_real_repo(tmp_path: Path) -> None:
-    local = (
-        (ROOT / "config" / "allowlist.local.yaml", tmp_path / "allowlist.local.yaml"),
-        (ROOT / "config" / "operator_approval.yaml", tmp_path / "operator_approval.yaml"),
-        (ROOT / "Docs/attestations/spend-reconciliation.yaml", tmp_path / "spend-reconciliation.yaml"),
-    )
-    moved = [(source, hidden) for source, hidden in local if source.exists()]
-    for source, hidden in moved:
-        source.rename(hidden)
-    dated = ROOT / "Docs/attestations/spend-reconciliation.yaml"
-    dated.write_text(
-        "as_of: 2026-10-22\nincurred_usd: 0\nopen_reserved_usd: 0\nuncertain_usd: 0\nexcess_usd: 0\n",
-        encoding="utf-8",
-    )
-    try:
-        results = run_preflight(ROOT, today=TODAY)
-    finally:
-        dated.unlink(missing_ok=True)
-        for source, hidden in moved:
-            if hidden.exists() and not source.exists():
-                hidden.rename(source)
+    with _committed_gate_inputs(tmp_path):
+        dated = ROOT / "Docs/attestations/spend-reconciliation.yaml"
+        dated.write_text(
+            "as_of: 2026-10-22\nincurred_usd: 0\nopen_reserved_usd: 0\nuncertain_usd: 0\nexcess_usd: 0\n",
+            encoding="utf-8",
+        )
+        try:
+            results = run_preflight(ROOT, today=TODAY)
+            level = r8_level(ROOT, TODAY)
+        finally:
+            dated.unlink(missing_ok=True)
     assert not all(item.go for item in results)
     assert gate(results, "flags_false").go
-    for name in ("allowlist_single_origin", "public_target_approval"):
-        assert not gate(results, name).go, name
     for name in (
+        "allowlist_single_origin",
+        "public_target_approval",
         "deploy_attestation",
         "pin_outcome",
-        "lifetime_ceiling",
-        "k1_available",
-        "p_u_closed",
+        "provider_cap",
+        "spend_limits_attested",
     ):
+        assert not gate(results, name).go, name
+    for name in ("lifetime_ceiling", "k1_available", "p_u_closed"):
         assert gate(results, name).go, name
-    assert gate(results, "spend_limits_attested").go
-    assert "not a provider limit" in gate(results, "spend_limits_attested").reason
-    assert gate(results, "provider_cap").go
-    assert "in-repo-caps-only" in gate(results, "provider_cap").reason
-    assert r8_level(ROOT, TODAY) == BLOCKED_DEVIATION
+    assert level == BLOCKED
 
 
 def test_preflight_is_go_only_on_a_synthetic_all_green_root(tmp_path: Path) -> None:
@@ -529,28 +557,11 @@ def test_the_preflight_script_exits_non_zero_on_the_real_repo_and_zero_on_green(
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    source = ROOT / "Docs/attestations/spend-reconciliation.yaml"
-    hidden = tmp_path / "spend-reconciliation.yaml"
-    moved = source.exists()
-    original = source.read_bytes() if moved else None
-    if moved:
-        source.rename(hidden)
-    source.write_text(
-        "as_of: 2026-10-23\nincurred_usd: 0\nopen_reserved_usd: 0\nuncertain_usd: 0\nexcess_usd: 0\n",
-        encoding="utf-8",
-    )
     out = io.StringIO()
-    try:
+    with _committed_gate_inputs(tmp_path):
         with redirect_stdout(out):
-            assert module.main(["--root", str(ROOT)]) == 0
-    finally:
-        if original is None:
-            source.unlink(missing_ok=True)
-        else:
-            source.write_bytes(original)
-        if moved and hidden.exists():
-            hidden.unlink()
-    assert "PREFLIGHT: GO" in out.getvalue()
+            assert module.main(["--root", str(ROOT)]) == 1
+    assert "PREFLIGHT: NO-GO" in out.getvalue()
     assert module.main(["--request-usd", "abc"]) == 2
     assert module.main(["--request-usd", "-1"]) == 2
 

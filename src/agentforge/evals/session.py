@@ -18,6 +18,7 @@ import os
 import re
 import ssl
 import time
+from pathlib import Path
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from uuid import uuid4
@@ -726,9 +727,10 @@ _SOCKET_TIMEOUT = 50.0
 _REDIRECTS = frozenset({301, 302, 303, 307, 308})
 # Test seam only. request() still runs first. Not read from the environment and not a live bypass.
 connection_opener: Callable[..., HTTPConnection] | None = None
-# The isolated R7 stack publishes a self-signed certificate on this loopback port only.
+# The isolated R7 stack presents a local certificate for this address only. The PEM is gitignored.
+_ISOLATED_TLS_HOST = "127.0.0.1"
 _ISOLATED_TLS_PORT = 19300
-_LOOPBACK = frozenset({"127.0.0.1", "localhost", "::1"})
+_ISOLATED_CERT = Path(__file__).resolve().parents[3] / "config" / "isolated-target.pem"
 
 
 def real_transport(
@@ -759,9 +761,15 @@ def real_transport(
     port = parts.port if parts.port is not None else (443 if parts.scheme == "https" else 80)
     if connection_opener is not None:
         conn = connection_opener(parts.hostname, port, timeout=timeout)
-    elif parts.scheme == "https" and parts.hostname in _LOOPBACK and port == _ISOLATED_TLS_PORT:
-        # Certificate verification stays on for every other host, including a public tunnel.
-        conn = HTTPSConnection(parts.hostname, port, timeout=timeout, context=ssl._create_unverified_context())
+    elif parts.scheme == "https" and parts.hostname == _ISOLATED_TLS_HOST and port == _ISOLATED_TLS_PORT:
+        # Verification stays on. The gitignored PEM is the only trust anchor for this loopback port.
+        if not _ISOLATED_CERT.is_file():
+            raise RefusedByChokepoint("live", "isolated target certificate is missing")
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        context.verify_mode = ssl.CERT_REQUIRED
+        context.check_hostname = True
+        context.load_verify_locations(cafile=str(_ISOLATED_CERT))
+        conn = HTTPSConnection(parts.hostname, port, timeout=timeout, context=context)
     elif parts.scheme == "https":
         conn = HTTPSConnection(parts.hostname, port, timeout=timeout)
     else:

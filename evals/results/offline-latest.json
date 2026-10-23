@@ -40,6 +40,150 @@
       "weakened_replay": "fail"
     },
     {
+      "case_id": "seed-tm-ds-4",
+      "category": "TM-DS",
+      "exercise": "boundary",
+      "grader": "attack_count",
+      "owasp_id": "A04",
+      "p11_gate": {
+        "content_safety": "pass",
+        "discrimination": "pass",
+        "exercise_tag": "pass",
+        "llm08_proxy": "n/a",
+        "non_vacuity": "pass",
+        "trigger_source": "pass"
+      },
+      "safe_replay": "pass",
+      "subcategory": "TM-DS-4",
+      "weakened_replay": "fail"
+    },
+    {
+      "case_id": "seed-tm-ds-a03",
+      "category": "TM-DS",
+      "exercise": "invariant",
+      "grader": "stored_evidence",
+      "owasp_id": "A03",
+      "p11_gate": {
+        "content_safety": "pass",
+        "discrimination": "pass",
+        "exercise_tag": "pass",
+        "llm08_proxy": "n/a",
+        "non_vacuity": "pass",
+        "trigger_source": "pass"
+      },
+      "safe_replay": "pass",
+      "subcategory": "TM-DS-4",
+      "weakened_replay": "fail"
+    },
+    {
+      "case_id": "seed-tm-ds-a06",
+      "category": "TM-DS",
+      "exercise": "invariant",
+      "grader": "stored_evidence",
+      "owasp_id": "A06",
+      "p11_gate": {
+        "content_safety": "pass",
+        "discrimination": "pass",
+        "exercise_tag": "pass",
+        "llm08_proxy": "n/a",
+        "non_vacuity": "pass",
+        "trigger_source": "pass"
+      },
+      "safe_replay": "pass",
+      "subcategory": "TM-DS-4",
+      "weakened_replay": "fail"
+    },
+    {
+      "case_id": "seed-tm-ds-a09",
+      "category": "TM-DS",
+      "exercise": "invariant",
+      "grader": "stored_evidence",
+      "owasp_id": "A09",
+      "p11_gate": {
+        "content_safety": "pass",
+        "discrimination": "pass",
+        "exercise_tag": "pass",
+        "llm08_proxy": "n/a",
+        "non_vacuity": "pass",
+        "trigger_source": "pass"
+      },
+      "safe_replay": "pass",
+      "subcategory": "TM-DS-4",
+      "weakened_replay": "fail"
+    },
+    {
+      "case_id": "seed-tm-ds-a10",
+      "category": "TM-DS",
+      "exercise": "invariant",
+      "grader": "stored_evidence",
+      "owasp_id": "A10",
+      "p11_gate": {
+        "content_safety": "pass",
+        "discrimination": "pass",
+        "exercise_tag": "pass",
+        "llm08_proxy": "n/a",
+        "non_vacuity": "pass",
+        "trigger_source": "pass"
+      },
+      "safe_replay": "pass",
+      "subcategory": "TM-DS-4",
+      "weakened_replay": "fail"
+    },
+    {
+      "case_id": "seed-tm-ds-audit",
+      "category": "TM-DS",
+      "exercise": "invariant",
+      "grader": "audit_trace",
+      "owasp_id": "A09",
+      "p11_gate": {
+        "content_safety": "pass",
+        "discrimination": "pass",
+        "exercise_tag": "pass",
+        "llm08_proxy": "n/a",
+        "non_vacuity": "pass",
+        "trigger_source": "pass"
+      },
+      "safe_replay": "pass",
+      "subcategory": "TM-DS-4",
+      "weakened_replay": "fail"
+    },
+    {
+      "case_id": "seed-tm-ds-llm05",
+      "category": "TM-DS",
+      "exercise": "invariant",
+      "grader": "stored_evidence",
+      "owasp_id": "LLM05",
+      "p11_gate": {
+        "content_safety": "pass",
+        "discrimination": "pass",
+        "exercise_tag": "pass",
+        "llm08_proxy": "n/a",
+        "non_vacuity": "pass",
+        "trigger_source": "pass"
+      },
+      "safe_replay": "pass",
+      "subcategory": "TM-DS-4",
+      "weakened_replay": "fail"
+    },
+    {
+      "case_id": "seed-tm-ds-rate",
+      "category": "TM-DS",
+      "exercise": "boundary",
+      "grader": "rate_limit",
+      "owasp_id": "A04",
+      "p11_gate": {
+        "content_safety": "pass",
+        "discrimination": "pass",
+        "exercise_tag": "pass",
+        "llm08_proxy": "n/a",
+        "non_vacuity": "pass",
+        "trigger_source": "pass"
+      },
+      "safe_replay": "pass",
+      "subcategory": "TM-DS-4",
+      "weakened_replay": "fail"
+    },
+    {
       "case_id": "seed-tm-ex-1",
       "category": "TM-EX",
       "exercise": "invariant",
